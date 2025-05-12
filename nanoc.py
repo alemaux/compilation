@@ -81,9 +81,10 @@ def asm_expression(e):
         return f"""{asm_left}
 push rax
 {asm_right}
-pop rax
 mov rbx, rax
+pop rax
 {op2asm[e_op.value]}\n"""
+
     
 def asm_commande(c):
     if c.data == "affectation":
@@ -125,10 +126,10 @@ def asm_programme(p):
     init_vars = ""
     decl_vars = ""
     for i, c in enumerate(p.children[0].children):
-        init_vars = f"""mov rbx, [argv]
+        init_vars += f"""mov rbx, [argv]
         mov rdi, [rbx + {(i+1)*8}]
         call atoi
-        mov [{c.value}], rax"""
+        mov [{c.value}], rax\n"""
         decl_vars += f"{c.value}: dq 0 \n"
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
@@ -138,7 +139,7 @@ def asm_programme(p):
 
 
 if __name__ == "__main__":
-    with open("sample.c") as f:
+    with open("simple.c") as f:
         src = f.read()
     ast = g.parse(src)
     res = asm_programme(ast)
