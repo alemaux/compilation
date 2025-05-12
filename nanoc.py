@@ -5,7 +5,7 @@ g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
-TYPE: "long", "int", "char", "void"
+TYPE: "long" | "int" | "char" | "void" | "short"
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 declaration: TYPE IDENTIFIER ->decl
@@ -14,7 +14,7 @@ expression: IDENTIFIER ->var
          | NUMBER ->number
 command: command ";" (command)* ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
-         |declaration "=" expression ->declaration
+         |declaration ("=" expression)? ->declaration
          |IDENTIFIER "=" expression ->affectation
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
@@ -25,6 +25,9 @@ program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}
 """, start='program')
 
 cpt = iter(range(1000000))
+
+variables = {}
+
 
 def pp_expression(e):
     if e.data in ("var", "number"):
@@ -61,21 +64,20 @@ def pp_command(c):
 def pp_list_var(lv):
     list_var = ""
     for v in lv:
-        list_var += v
+        list_var += v.children[0].value + " " + v.children[1].value
         list_var += ", "
 
     return list_var[: -2]
 
 def pp_programme(p):
-    list_var = pp_list_var(p.children[0].children)
-    commands = pp_command(p.children[1])
-    retour = pp_expression(p.children[2])
+    list_var = pp_list_var(p.children[1].children)
+    commands = pp_command(p.children[2])
+    retour = pp_expression(p.children[3])
     corps = f"""{commands}
-return({retour})
-    """
-    return f"""main({list_var}) {{
+    return({retour})"""
+    return f"""{p.children[0].value} main({list_var}) {{
     {corps}
-    }} """
+}} """
 
 def asm_expression(e):
     if e.data == "number":
@@ -95,10 +97,20 @@ pop rbx
 {op2asm[e_op.value]}"""
 
 def asm_command(c):
-    if c.data == "affectation":
+    if c.data == "declaration":
+        type = c.children[0].children[0]
+        var = c.children[0].children[0]
+        variables[var.value] = type.value
+        if len(c.children >=1):
+            exp = c.children[1]
+            return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+    elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
-        return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+        if var in variables.keys():
+            return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+        else :
+            raise Exception("Variable non déclarée")
     elif c.data =="skip": return "nop"
 
     elif c.data == "print": return f"""[{asm_expression(exp)}]
@@ -144,24 +156,37 @@ end{idx}:nop"""
         rchild = c.children[1]
         return f"{asm_command(lchild)}\n{asm_command(rchild)}"
 
+def asm_decl_var(lst):
+    types_len = {
+        "char" : "db",
+        "short" : "dw",
+        "int" : "dd",
+        "long" : "dq"
+    }
+    decl_var = ""
+    for var,type in variables.items():
+        decl_var += f"{var} : {types_len[type]} 0\n"
+    return decl_var
+
+
 def asm_prg(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
-    ret = asm_expression(p.children[2])
+    ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     init_vars = ""
-    decl_vars = ""
-    for i, c in enumerate(p.children[0].children):
+    for i, c in enumerate(p.children[1].children):
+        variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
 mov rdi, [rbx + {8 * (i+1)}]
 xor rax, rax
 call atoi
-mov [{c.value}], rax
+mov [{c.children[1].value}], rax
 """
-        decl_vars += f"{c.value} : dq 0\n"
+    decl_var = asm_decl_var(p.children[1].children)
+    prog_asm = prog_asm.replace("DECL_VARS", decl_var)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[1]))
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
     return prog_asm
 
 
@@ -170,5 +195,6 @@ if __name__ == '__main__':
     with open("sample.c", "r") as f:
         src  = f.read()
     ast = g.parse(src)
+    variables = {}
     #print(pp_programme(ast))
     print(asm_prg(ast))
