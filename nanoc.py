@@ -1,10 +1,9 @@
 from lark import Lark
-
 g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
-DOUBLE : /[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/
+DOUBLE : /[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 liste_var: ->vide
          |IDENTIFIER ("," IDENTIFIER)* ->vars
@@ -22,7 +21,7 @@ command: command ";" (command)* ->sequence
 program: "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 %import  common.WS
 %ignore WS
-""", start='command')
+""", start='program')
 
 def pp_expression(e):
     if e.data in ['var','number','double'] : return f"{e.children[0].value}"
@@ -54,27 +53,44 @@ def pp_commande(c):
         tail = c.children[1]
         return f"{pp_commande(head)} ; {pp_commande(tail)}"
 
+def get_vars_expression(e):
+    pass
 
-op2asm = {'+': "add rax, rbx", "-": " sub rax, rbx"}
+def get_vars_commande(c):
+    pass
+
+op2asm_int = {'+': "add rax, rbx", "-": "sub rax, rbx"}
+op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le moment juste les sommes et soustraction mais faire le reste
 cpt = iter(range(1000000))
 
 
 def asm_expression(e):
-    if e.data == 'var' : return f"mov rax, [{e.children[0].value}]\n"
-    if e.data == 'number' : return f"mov rax, {e.children[0].value}\n"
-    if e.data != "parentheses":
+    if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
+    if e.data == 'number' : return f"mov rax, {e.children[0].value}"
+    if e.data == 'double' : return f"movsd xmm0, [{e.children[0].value}]"
+    if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
-    return f"""{asm_left}
+
+        if(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
+            return f"""{asm_left}
 push rax
 {asm_right}
 mov rbx, rax
 pop rax
-{op2asm[e_op.value]}\n"""
-    
+{op2asm_int[e_op.value]}"""
+        elif(e_left.data == 'double' or e_right.data == 'double'):
+            return f"""{asm_left}
+sub rsp, 8
+movsd [rsp], xmm0
+{asm_right}
+movsd xmm1, xmm0
+movsd xmm0, [rsp]
+add rdp, 8
+{op2asm_double[e_op.value]}"""
 
 
 def asm_commande(c):
@@ -118,9 +134,9 @@ def asm_programme(p):
     decl_vars = ""
     for i, c in enumerate(p.children[0].children):
         init_vars += f"""mov rbx, [argv]
-        mov rdi, [rbx + {(i+1)*8}]
-        call atoi
-        mov [{c.value}], rax\n"""
+mov rdi, [rbx + {(i+1)*8}]
+call atoi
+mov [{c.value}], rax\n"""
         decl_vars += f"{c.value}: dq 0 \n"
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
@@ -132,19 +148,8 @@ def asm_programme(p):
 if __name__ == "__main__":
     with open("sample.c") as f:
         src = f.read()
-        ast = g.parse('X = (double) 3.898989')
-        res = pp_commande(ast)
+        ast = g.parse(src)
+        res = asm_programme(ast)
         print(res)
-
-        #ast = g.parse(src)
-        #res = asm_programme(ast)
-        #print(res)
-    #with open("sample.asm", "w") as result:
-        #result.write(res)
-
-    #print(ast.pretty('  '))
-#print(ast.data)
-#print(ast.children)
-#print(ast.children[0])
-#print(ast.children[0].type)
-#print(ast.children[0].value)
+    with open("sample.asm", "w") as result:
+        result.write(res)
