@@ -4,10 +4,11 @@ IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
 TYPE: "long" | "int" | "char" | "void" | "short"
+declaration: TYPE IDENTIFIER -> decl
 DOUBLE : /[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 liste_var: ->vide
-         |IDENTIFIER ("," IDENTIFIER)* ->vars
+         |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | DOUBLE -> double
@@ -20,7 +21,7 @@ command: command ";" (command)* ->sequence
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-program: "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 %import  common.WS
 %ignore WS
 """, start='program')
@@ -103,7 +104,7 @@ def get_vars_expression(e):
 
 def pp_programme(p):
     list_var = pp_list_var(p.children[1].children)
-    commands = pp_command(p.children[2])
+    commands = pp_commande(p.children[2])
     retour = pp_expression(p.children[3])
     corps = f"""{commands}
     return({retour})"""
@@ -183,13 +184,13 @@ call printf
         return f"""loop{idx}: {asm_expression(exp)}
 cmp rax, 0
 jz end{idx}
-{asm_commande(body)}
+{asm_command(body)}
 jmp loop{idx}
 end{idx}: nop"""
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
-        return f"{asm_commande(head)}\n{asm_commande(tail)}"
+        return f"{asm_command(head)}\n{asm_command(tail)}"
     return ""
 
 def asm_decl_var(lst):
