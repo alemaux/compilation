@@ -1,14 +1,12 @@
 from lark import Lark
 
-
 g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
 TYPE: "long" | "int" | "char" | "void" | "short"
 liste_var: ->vide
-         |declaration ("," declaration)* ->vars
-declaration: TYPE IDENTIFIER ->decl
+         |IDENTIFIER ("," IDENTIFIER)* ->vars
 expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | NUMBER ->number
@@ -19,7 +17,7 @@ command: command ";" (command)* ->sequence
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+program: "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 %import  common.WS
 %ignore WS
 """, start='program')
@@ -56,36 +54,31 @@ types_len = {
     }
 
 def pp_expression(e):
-    if e.data in ("var", "number"):
-        return f"{e.children[0].value}"
-    e_left = e.children[0]
-    e_op = e.children[1]
-    e_right = e.children[2]
-    return f"({pp_expression(e_left)} {e_op.value} {pp_expression(e_right)})"
+    if e.data in ['var','number'] : return f"{e.children[0].value}"
+    if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"
+    if e.data != "parentheses":
+        e_left = e.children[0]
+        e_op = e.children[1]
+        e_right = e.children[2]
+        return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
 
-def pp_command(c):
+def pp_commande(c):
     if c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
         return f"{var.value} = {pp_expression(exp)}"
-    elif c.data =="skip": return "skip"
-    elif c.data == "print": return f"printf({pp_expression(c.children[0])})"
-    elif c.data =="while":
+    elif c.data == "skip": return "skip"
+    elif c.data == "print": return f"print({pp_expression(c.children[0])})"
+    elif c.data == "while":
         exp = c.children[0]
         body = c.children[1]
-        return f"while({pp_expression(exp)}){{\n\t{pp_command(body)}\n}}"
-    elif c.data == "ite":
-            exp = c.children[0]
-            i_body = c.children[1]
-            if len(c.children) > 2:
-                e_body = c.children[2]
-                return f"if({pp_expression(exp)}){{\n{pp_command(i_body)}}} else {{{pp_command(e_body)}\n}}"
-            return f"if({pp_expression(exp)}){{{pp_command(i_body)}}}"
+        return f"while ({pp_expression(exp)}) {{{pp_commande(body)}}}"
     elif c.data == "sequence":
-        if len(c.children) == 1:return f"{pp_command(c.children[0])};"
-        lchild = c.children[0]
-        rchild = c.children[1]
-        return f"{pp_command(lchild)};{pp_command(rchild)}"
+        head = c.children[0]
+        tail = c.children[1]
+        return f"{pp_commande(head)};\n{pp_commande(tail)}"
+
+    return ""
 
 def pp_list_var(lv):
     list_var = ""
@@ -151,44 +144,23 @@ def asm_command(c):
 mov rdi, rax
 mov rsi, fmt
 xor rax, rax
-call printf"""
-    
-    elif c.data =="while":
+call printf
+"""
+    elif c.data == "while":
         exp = c.children[0]
         body = c.children[1]
         idx = next(cpt)
-        return f"""loop{idx}:{asm_expression(exp)}
+        return f"""loop{idx}: {asm_expression(exp)}
 cmp rax, 0
 jz end{idx}
-{asm_command(body)}
+{asm_commande(body)}
 jmp loop{idx}
 end{idx}: nop"""
-    
-    elif c.data == "ite":
-        exp = c.children[0]
-        i_body = c.children[1]
-        idx = next(cpt)
-        if len(c.children) > 2:
-            e_body = c.children[2]
-            return f"""{asm_expression(exp)}
-cmp rax, 0
-jz at{idx}
-{asm_command(i_body)}
-jmp end{idx}
-at{idx}:{asm_command(e_body)}
-end{idx}:nop"""
-
-        return f"""{asm_expression(exp)}
-cmp rax, 0
-jz end{idx}
-{asm_command(i_body)}
-end{idx}:nop"""
-
     elif c.data == "sequence":
-        if len(c.children) == 1:return f"{asm_command(c.children[0])};"
-        lchild = c.children[0]
-        rchild = c.children[1]
-        return f"{asm_command(lchild)}\n{asm_command(rchild)}"
+        head = c.children[0]
+        tail = c.children[1]
+        return f"{asm_commande(head)}\n{asm_commande(tail)}"
+    return ""
 
 def asm_decl_var(lst):
     
@@ -198,7 +170,7 @@ def asm_decl_var(lst):
     return decl_var
 
 
-def asm_prg(p):
+def asm_programme(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
     ret = asm_expression(p.children[3])
@@ -219,13 +191,20 @@ mov [{c.children[1].value}], rax
 
 
 
-if __name__ == '__main__':
-    with open("sample.c", "r") as f:
-        src  = f.read()
+if __name__ == "__main__":
+    with open("simple.c") as f:
+        src = f.read()
     ast = g.parse(src)
     variables = {}
-    res = asm_prg(ast)
+    res = asm_programme(ast)
     #print(pp_programme(ast))
     #print(res)
     with open("sample.asm", "w") as result:
         result.write(res)
+        
+#print(ast.pretty('  '))
+#print(ast.data)
+#print(ast.children)
+#print(ast.children[0])
+#print(ast.children[0].type)
+#print(ast.children[0].value)
