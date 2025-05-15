@@ -67,7 +67,7 @@ cpt = iter(range(1000000))
 def asm_expression(e):
     if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
     if e.data == 'number' : return f"mov rax, {e.children[0].value}"
-    if e.data == 'double' : return f"movsd xmm0, [{e.children[0].value}]"
+    if e.data == 'double' : return f"movsd xmm0, {e.children[0].value}"
     if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
