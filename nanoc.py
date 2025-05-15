@@ -24,10 +24,36 @@ program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}
 %ignore WS
 """, start='program')
 
+def asm_expression(e):
+    if e.data == "number":
+        return f"mov rax, {e.children[0].value}\n"
+    elif e.data == "var":
+        return f"mov rax, [{e.children[0].value}]\n"
+    e_left = e.children[0]
+    e_op = e.children[1]
+    e_right = e.children[2]
+    asm_left = asm_expression(e_left)
+    asm_right = asm_expression(e_right)
+    op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
+    return f""";operation
+{asm_left}
+push rax
+{asm_right}
+mov rbx, rax
+pop rax
+{op2asm[e_op.value]}"""
+
 cpt = iter(range(1000000))
 
 variables = {}
+op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
 
+types_len = {
+        "char" : "db",
+        "short" : "dw",
+        "int" : "dd",
+        "long" : "dq"
+    }
 
 def pp_expression(e):
     if e.data in ("var", "number"):
@@ -79,6 +105,9 @@ def pp_programme(p):
     {corps}
 }} """
 
+
+
+
 def asm_expression(e):
     if e.data == "number":
         return f"mov rax, {e.children[0].value}\n"
@@ -89,10 +118,10 @@ def asm_expression(e):
     e_right = e.children[2]
     asm_left = asm_expression(e_left)
     asm_right = asm_expression(e_right)
-    op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
-    return f"""{asm_right}
-push rax
+    return f""";operation
 {asm_left}
+push rax
+{asm_right}
 mov rbx, rax
 pop rax
 {op2asm[e_op.value]}"""
@@ -100,11 +129,13 @@ pop rax
 def asm_command(c):
     if c.data == "declaration":
         type = c.children[0].children[0]
-        var = c.children[0].children[0]
+        var = c.children[0].children[1]
         variables[var.value] = type.value
-        if len(c.children >=1):
+        print(variables)
+        if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+    
     elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
@@ -112,9 +143,11 @@ def asm_command(c):
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
         else :
             raise Exception("Variable non déclarée")
-    elif c.data =="skip": return "nop"
+        
+    elif c.data =="skip": return "nop\n"
 
-    elif c.data == "print": return f"""[{asm_expression(exp)}]
+    elif c.data == "print": 
+        return f"""[{asm_expression(c.children[0])}]
 mov rdi, rax
 mov rsi, fmt
 xor rax, rax
@@ -158,12 +191,7 @@ end{idx}:nop"""
         return f"{asm_command(lchild)}\n{asm_command(rchild)}"
 
 def asm_decl_var(lst):
-    types_len = {
-        "char" : "db",
-        "short" : "dw",
-        "int" : "dd",
-        "long" : "dq"
-    }
+    
     decl_var = ""
     for var,type in variables.items():
         decl_var += f"{var} : {types_len[type]} 0\n"
@@ -180,7 +208,6 @@ def asm_prg(p):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
 mov rdi, [rbx + {8 * (i+1)}]
-xor rax, rax
 call atoi
 mov [{c.children[1].value}], rax
 """
@@ -197,5 +224,8 @@ if __name__ == '__main__':
         src  = f.read()
     ast = g.parse(src)
     variables = {}
+    res = asm_prg(ast)
     #print(pp_programme(ast))
-    print(asm_prg(ast))
+    #print(res)
+    with open("sample.asm", "w") as result:
+        result.write(res)

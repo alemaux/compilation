@@ -1,4 +1,4 @@
-void main(int X, int Y) {
+void main(long X, long Y) {
     while(X){
         X = X - 1;
         Y = Y + 1
