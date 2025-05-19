@@ -67,11 +67,10 @@ def pp_commande(c):
     if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
-        if len(c.children) >2:
-            exp = c.children[2]
+        if len(c.children) >1:
+            exp = c.children[1]
             return f"{type.value} {var.value} = {pp_expression(exp)}"
-        return f"{type.value} {var.value};"
-    
+        return f"{type.value} {var.value}"
     elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
