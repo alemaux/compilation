@@ -5,7 +5,7 @@ OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
 TYPE: "long" | "int" | "char" | "void" | "short"
 declaration: TYPE IDENTIFIER -> decl
-DOUBLE : /[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
+DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
