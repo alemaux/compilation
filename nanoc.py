@@ -4,21 +4,26 @@ g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
+TYPE: "long"| "int"| "char"| "void"
 liste_var: ->vide
-         |IDENTIFIER ("," IDENTIFIER)* ->vars
+         |declaration ("," declaration)* ->vars
+declaration: TYPE IDENTIFIER ->decl
 expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | NUMBER ->number
 command: command ";" (command)* ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
+         |declaration "=" expression ->declaration
          |IDENTIFIER "=" expression ->affectation
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-program: "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+struct:"typedef struct" "{" (declaration ";")* "}" IDENTIFIER -> struct
+program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+         | struct -> def_struct
 %import  common.WS
 %ignore WS
-""", start='program')
+""", start='struct')
 
 def pp_expression(e):
     if e.data in ['var','number'] : return f"{e.children[0].value}"
@@ -55,6 +60,11 @@ def pp_list_var(lv):
 
     return list_var[: -2]
 
+def pp_declaration(d):
+    type = d.children[0]
+    var = d.children[1]
+    return f"{type.value} {var.value}"
+
 def pp_programme(p):
     list_var = pp_list_var(p.children[0].children)
     commands = pp_commande(p.children[1])
@@ -64,6 +74,12 @@ def pp_programme(p):
     """
     return f"""main({list_var}) {{
     {corps}}} """
+
+def pp_struct(p):
+    result = ""
+    for i in range(len(p.children)-1):
+        result += f"{pp_declaration(p.children[i])};\n"
+    return f"typedef struct {{{result}}}{p.children[-1]}\n"
 
 op2asm = {'+': "add rax, rbx", "-": " sub rax, rbx"}
 cpt = iter(range(1000000))
@@ -139,13 +155,17 @@ def asm_programme(p):
 
 
 if __name__ == "__main__":
-    with open("simple.c") as f:
+    with open("test_struct.c") as f:
         src = f.read()
     ast = g.parse(src)
-    res = asm_programme(ast)
+    print(ast)
+    print(pp_struct(ast))
+    
+    
+    """res = asm_programme(ast)
     print(pp_programme(ast))
     with open("simple.asm", "w") as result:
-        result.write(res)
+        result.write(res)"""
 
     #print(ast.pretty('  '))
 #print(ast.data)

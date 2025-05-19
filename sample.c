@@ -1,4 +1,4 @@
-    main(X, Y) {
+    int main(int X, int Y) {
     while(X){
         X = X - 1;
         Y = Y + 1
