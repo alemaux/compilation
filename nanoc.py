@@ -150,7 +150,6 @@ add rdp, 8
 
 
 def asm_commande(c):
-    def asm_command(c):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
@@ -184,13 +183,13 @@ call printf
         return f"""loop{idx}: {asm_expression(exp)}
 cmp rax, 0
 jz end{idx}
-{asm_command(body)}
+{asm_commande(body)}
 jmp loop{idx}
 end{idx}: nop"""
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
-        return f"{asm_command(head)}\n{asm_command(tail)}"
+        return f"{asm_commande(head)}\n{asm_commande(tail)}"
     return ""
 
 def asm_decl_var(lst):
@@ -219,7 +218,7 @@ mov [{c.children[1].value}], rax
     prog_asm = prog_asm.replace("DECL_VARS", decl_var)
 
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
     return prog_asm
 
 
