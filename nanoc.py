@@ -19,11 +19,11 @@ command: command ";" (command)* ->sequence
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
 struct:"typedef struct" "{" (declaration ";")* "}" IDENTIFIER -> struct
-program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
-         | struct -> def_struct
+main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+program: (struct)* main -> programme
 %import  common.WS
 %ignore WS
-""", start='struct')
+""", start='program')
 
 def pp_expression(e):
     if e.data in ['var','number'] : return f"{e.children[0].value}"
@@ -55,7 +55,7 @@ def pp_commande(c):
 def pp_list_var(lv):
     list_var = ""
     for v in lv:
-        list_var += v
+        list_var += pp_declaration(v)
         list_var += ", "
 
     return list_var[: -2]
@@ -65,14 +65,15 @@ def pp_declaration(d):
     var = d.children[1]
     return f"{type.value} {var.value}"
 
-def pp_programme(p):
-    list_var = pp_list_var(p.children[0].children)
-    commands = pp_commande(p.children[1])
-    retour = pp_expression(p.children[2])
+def pp_main(p):
+    type = p.children[0].value
+    list_var = pp_list_var(p.children[1].children)
+    commands = pp_commande(p.children[2])
+    retour = pp_expression(p.children[3])
     corps = f"""{commands}
     return({retour})
     """
-    return f"""main({list_var}) {{
+    return f"""{type} main({list_var}) {{
     {corps}}} """
 
 def pp_struct(p):
@@ -80,6 +81,14 @@ def pp_struct(p):
     for i in range(len(p.children)-1):
         result += f"{pp_declaration(p.children[i])};\n"
     return f"typedef struct {{{result}}}{p.children[-1]}\n"
+
+def pp_programme(p):
+    result = ""
+    if len(p.children) >= 2:
+        for i in range(len(p.children) - 1):
+            result += pp_struct(p.children[i])
+    result += pp_main(p.children[-1])
+    return result
 
 op2asm = {'+': "add rax, rbx", "-": " sub rax, rbx"}
 cpt = iter(range(1000000))
@@ -134,33 +143,64 @@ end{idx}: nop"""
         return f"{asm_commande(head)}\n{asm_commande(tail)}"
     return ""
 
-def asm_programme(p):
+def asm_struct(p):
+    struct_name = p.children[-1].value 
+    size_map = {
+        'char': 1,
+        'int': 8,   # pour l'alignement mémoire
+        'long': 8,
+        'void': 0   # void n'a pas de taille ici
+    }
+    
+    total_size_bytes = 0
+    for field in p.children[:-1]:
+        typename = field.children[0].value
+        total_size_bytes += size_map[typename]
+
+    size_qword = (total_size_bytes + 7) // 8
+    return f"{struct_name}: resq {size_qword} ; taille {total_size_bytes} pour {struct_name}\n"
+
+
+def asm_main(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
-    ret = asm_expression(p.children[2])
+    ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     init_vars = ""
     decl_vars = ""
-    for i, c in enumerate(p.children[0].children):
+    for i, c in enumerate(p.children[1].children):
         init_vars += f"""mov rbx, [argv]
         mov rdi, [rbx + {(i+1)*8}]
         call atoi
-        mov [{c.value}], rax\n"""
-        decl_vars += f"{c.value}: dq 0 \n"
+        mov [{c.children[1].value}], rax\n"""
+        decl_vars += f"{c.children[1].value}: dq 0 \n"
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[1]))    
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))    
     return prog_asm
+
+def asm_programme(p):
+    struct_def = ""
+    if len(p.children) >= 2:
+        for i in range(len(p.children) - 1):
+            struct_def += asm_struct(p.children[i])
+    res = asm_main(p.children[-1])
+    return res.replace("DECL_STRUCT", struct_def)
+    
 
 
 
 if __name__ == "__main__":
-    with open("test_struct.c") as f:
+    with open("/home/mathus/compilation/compilo/compilation/sample.c") as f:
         src = f.read()
     ast = g.parse(src)
     print(ast)
-    print(pp_struct(ast))
-    
+    print(pp_programme(ast))
+    print(asm_programme(ast))
+    res = asm_programme(ast)
+    with open("simple.asm", "w") as result:
+        result.write(res)
+
     
     """res = asm_programme(ast)
     print(pp_programme(ast))
