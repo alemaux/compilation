@@ -76,11 +76,14 @@ def pp_expression(e):
             return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
         else :
             raise Exception("pas le bon type")
-    if e.data == 'opbin' : #gérer les expressions qui sont acceptées
+    if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+            return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        else :
+            raise Exception("pas le bon type")
     if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"        
     
 
