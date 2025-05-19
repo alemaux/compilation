@@ -64,7 +64,15 @@ def pp_expression(e):
         return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
 
 def pp_commande(c):
-    if c.data == "affectation":
+    if c.data == "decl":
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) >2:
+            exp = c.children[2]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value};"
+    
+    elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
         return f"{var.value} = {pp_expression(exp)}"
@@ -124,6 +132,8 @@ def asm_command(c):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
+        if type.value == "void":
+            raise Exception("c'est pas un vrai type void")
         variables[var.value] = type.value
         print(variables)
         if len(c.children) >=2:
@@ -198,7 +208,7 @@ if __name__ == "__main__":
     ast = g.parse(src)
     variables = {}
     res = asm_programme(ast)
-    #print(pp_programme(ast))
+    print(pp_programme(ast))
     #print(res)
     with open("sample.asm", "w") as result:
         result.write(res)
