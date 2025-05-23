@@ -9,7 +9,7 @@ liste_var: ->vide
          |declaration ("," declaration)* ->vars
 declaration: TYPE IDENTIFIER ->decl
 expression: IDENTIFIER ->var
-         | expression OPBIN expression ->opbin
+         | expression OPBIN expression ->opbin  
          | NUMBER ->number
 command: command ";" (command)* ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
