@@ -23,7 +23,7 @@ command: command ";" (command)* ->sequence
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression");" "}" ->main
+program: TYPE "main" "(" liste_var ")" "{" command* "return" "(" expression");" "}" ->main
 %import  common.WS
 %ignore WS
 """, start='program')
@@ -71,6 +71,13 @@ op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le mom
 cpt = iter(range(1000000))
 variables = {}
 float_literals = {}
+types_len = {
+        "char" : "db",
+        "short" : "dw",
+        "int" : "dd",
+        "long" : "dq",
+        "double" : "dq"
+    }
 
 def get_type_expression(e):
     if e.data == "number":
@@ -150,13 +157,12 @@ def asm_commande(c):
         type = decla.children[0]
         var = decla.children[1]
         variables[var.value] = f"{type.value}"
-        print(variables)
 
         code = ""
         if len(decla.children) >2:
             exp = decla.children[2]
             code_init = asm_expression(exp)
-            if var == "double":
+            if type.value == "double":
                 code += f"{code_init}\nmovsd [{var}], xmm0\n"
             else:
                 code += f"{code_init}\nmov [{var}], rax\n"
@@ -199,12 +205,29 @@ call printf
         exp = c.children[0]
         body = c.children[1]
         idx = next(cpt)
-        return f"""loop{idx}: {asm_expression(exp)}
-cmp rax, 0
-jz end{idx}
-{asm_commande(body)}
+        
+        code_exp = asm_expression(exp)
+        code_body = asm_commande(body)
+
+        # On teste le type de retour de l'expression
+        if get_type_expression(exp) == "double":
+            return f"""loop{idx}:
+{code_exp}
+xorpd xmm1, xmm1
+ucomisd xmm0, xmm1
+jbe end{idx}
+{code_body}
 jmp loop{idx}
 end{idx}: nop"""
+        else:  # int (par défaut)
+            return f"""loop{idx}:
+{code_exp}
+cmp rax, 0
+jz end{idx}
+{code_body}
+jmp loop{idx}
+end{idx}: nop"""
+    
     elif c.data == "sequence":
         head = c.children[0]
         if len(c.children)>1:
@@ -213,12 +236,17 @@ end{idx}: nop"""
         return f"{asm_commande(head)}\n"
     return ""
 
+def asm_decl_var():
+    decl_var = ""
+    for var,type in variables.items():
+        decl_var += f"{var} : {types_len[type]} 0\n"
+    return decl_var
+
 def asm_programme(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
     
     init_vars = ""
-    decl_vars = ""
     float_data = ""
     for i, c in enumerate(p.children[1].children):
         if c.data == "declaration":
@@ -238,17 +266,20 @@ movsd [{name}], xmm0\n"""
 mov rdi, [rbx + {(i+1)*8}]
 call atoi
 mov [{name}], rax\n"""
-                
-        decl_vars += f"{c.children[1].value}: dq 0 \n"
+
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2])) 
+
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
+
+    decl_vars = asm_decl_var()
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
-    ret = asm_expression(p.children[3])
+    
 
     for val, label in float_literals.items():
         float_data += f"{label}: dq {val}\n"
     prog_asm = prog_asm.replace("FLOAT_CONSTS", float_data)
 
+    ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
         
     return prog_asm
