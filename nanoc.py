@@ -30,25 +30,6 @@ program: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}
 %ignore WS
 """, start='program')
 
-def asm_expression(e):
-    if e.data == "number":
-        return f"mov rax, {e.children[0].value}\n"
-    elif e.data == "var":
-        return f"mov rax, [{e.children[0].value}]\n"
-    e_left = e.children[0]
-    e_op = e.children[1]
-    e_right = e.children[2]
-    asm_left = asm_expression(e_left)
-    asm_right = asm_expression(e_right)
-    op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
-    return f""";operation
-{asm_left}
-push rax
-{asm_right}
-mov rbx, rax
-pop rax
-{op2asm[e_op.value]}"""
-
 cpt = iter(range(1000000))
 
 variables = {}
