@@ -128,7 +128,7 @@ pop rax
 {op2asm[e_op.value]}"""
 
 def asm_command(c):
-    if c.data == "declaration":
+    if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
         if type.value == "void":
@@ -172,8 +172,7 @@ end{idx}: nop"""
         return f"{asm_command(head)}\n{asm_command(tail)}"
     return ""
 
-def asm_decl_var(lst):
-    
+def asm_decl_var():
     decl_var = ""
     for var,type in variables.items():
         decl_var += f"{var} : {types_len[type]} 0\n"
@@ -186,6 +185,7 @@ def asm_programme(p):
     ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     init_vars = ""
+    #Initialisation des arguments
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
@@ -193,10 +193,11 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-    decl_var = asm_decl_var(p.children[1].children)
+    
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    decl_var = asm_decl_var()
     prog_asm = prog_asm.replace("DECL_VARS", decl_var)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
     return prog_asm
 
 
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     ast = g.parse(src)
     variables = {}
     res = asm_programme(ast)
-    print(pp_programme(ast))
+    #print(pp_programme(ast))
     #print(res)
     with open("sample.asm", "w") as result:
         result.write(res)
