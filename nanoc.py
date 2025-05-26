@@ -42,6 +42,27 @@ types_len = {
         "long" : "dq"
     }
 
+
+def get_type_expression(e):
+    if e.data == "number":
+        return "int" #Entier par défaut : int
+    if e.data == "double":
+        return "double" #Float par défaut : double
+    if e.data == "var":
+        var_name = e.children[0].value
+        if var_name in variables:
+            return variables[var_name] #Si la variable est déclarée
+        else:
+            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
+    if e.data == "opbin":
+        type1 = get_type_expression(e.children[0])
+        type2 = get_type_expression(e.children[2])
+        if(type1==type2):
+            return type1
+    else:
+        raise ValueError(f"Expression inattendue pour type : {e}")
+
+
 def pp_expression(e):
     if e.data in ['var','number','double', 'string'] : return f"{e.children[0].value}"
     if e.data == 'len' :
@@ -219,14 +240,14 @@ def asm_decl_var():
 def asm_programme(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
-    ret = asm_expression(p.children[3])
-    prog_asm = prog_asm.replace("RETOUR", ret)
-    init_vars = ""
+
+
+
     #Initialisation des arguments
+    init_vars = ""
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
-
 mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
@@ -237,6 +258,15 @@ mov [{c.children[1].value}], rax
     prog_asm = prog_asm.replace("DECL_VARS", decl_var)
 
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
+    
+    #Gestion du retour 
+    decl_type = p.children[0].value
+    given_type = get_type_expression(p.children[3])
+    if((given_type != decl_type) and (decl_type != "void")):
+        raise Exception(f"Pas le bon type de retour : déclaré {p.children[0].value}, donné {get_type_expression(p.children[3])}")
+    ret = asm_expression(p.children[3])
+    prog_asm = prog_asm.replace("RETOUR", ret)
+    
     return prog_asm
 
 
@@ -247,6 +277,6 @@ if __name__ == "__main__":
         ast = g.parse(src)
         res = asm_programme(ast)
         #print(res)
-        print(pp_programme(ast))
+        #print(pp_programme(ast))
     with open("sample.asm", "w") as result:
         result.write(res)
