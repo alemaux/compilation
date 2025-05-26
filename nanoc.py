@@ -5,7 +5,9 @@ g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
-TYPE: "long" | "int" | "char" | "void" | "short" | "double"
+STRING: /"[^"]*"/
+TYPE: "long" | "int" | "char" | "void" | "short" | "string" | "double"
+declaration: TYPE IDENTIFIER 
 DOUBLE : /[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 liste_var: ->vide
@@ -15,6 +17,9 @@ expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | DOUBLE -> double
          | NUMBER ->number
+         | STRING ->string
+         | "len(" expression ")" -> len
+         | expression "[" expression "]" -> index
 command: command ";" (command)* ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
          |IDENTIFIER "=" expression ->affectation
@@ -29,20 +34,51 @@ program: TYPE "main" "(" liste_var ")" "{" command* "return" "(" expression");" 
 """, start='program')
 
 def pp_expression(e):
-    if e.data in ['var','number','double'] : return f"{e.children[0].value}"
-    if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"
-    if e.data != "parentheses":
+    if e.data in ['var','number','double', 'string'] : return f"{e.children[0].value}"
+    if e.data == 'len' :
+        child = e.children[0]
+        if child.data in ['string', 'var']: #gérer les var qui ne sont pas des string pour ne pas les accepter
+            return f"len ({pp_expression(child)})"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == 'index' : #Aloïs gérera que l'index soit attribué qu'à des int
+        e_left = e.children[0]
+        e_right = e.children[1]
+        if e_left.data in ['string', 'var'] and e_right.data in ['number', 'var'] :
+            return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+            return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"        
+    
 
 def pp_commande(c):
-    if c.data == "affectation":
+    if c.data == "decl" :
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) > 1:
+            exp = c.children[1]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value}"
+    elif c.data == "decl":
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) >1:
+            exp = c.children[1]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value}"
+    elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
         return f"{var.value} = {pp_expression(exp)};"
-    if c.data == "casting" :
+    elif c.data == "casting" :
         var = c.children[0]
         cast = c.children[1]
         exp = c.children[2]
@@ -157,6 +193,8 @@ def asm_commande(c):
         type = decla.children[0]
         var = decla.children[1]
         variables[var.value] = f"{type.value}"
+        if type.value == "void":
+            raise Exception("c'est pas un vrai type void")
 
         code = ""
         if len(decla.children) >2:
@@ -289,6 +327,5 @@ if __name__ == "__main__":
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
-        print(res)
     with open("sample.asm", "w") as result:
         result.write(res)
