@@ -95,6 +95,13 @@ def pp_commande(c):
             exp = c.children[1]
             return f"{type.value} {var.value} = {pp_expression(exp)}"
         return f"{type.value} {var.value}"
+    elif c.data == "decl":
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) >1:
+            exp = c.children[1]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value}"
     elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
@@ -177,10 +184,12 @@ add rdp, 8
 {op2asm_double[e_op.value]}"""
 
 
-def asm_commande(c):
-    if c.data == "declaration":
+def asm_command(c):
+    if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
+        if type.value == "void":
+            raise Exception("c'est pas un vrai type void")
         variables[var.value] = type.value
         if len(c.children) >=2:
             exp = c.children[1]
@@ -210,17 +219,16 @@ call printf
         return f"""loop{idx}: {asm_expression(exp)}
 cmp rax, 0
 jz end{idx}
-{asm_commande(body)}
+{asm_command(body)}
 jmp loop{idx}
 end{idx}: nop"""
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
-        return f"{asm_commande(head)}\n{asm_commande(tail)}"
+        return f"{asm_command(head)}\n{asm_command(tail)}"
     return ""
 
-def asm_decl_var(lst):
-    
+def asm_decl_var():
     decl_var = ""
     for var,type in variables.items():
         decl_var += f"{var} : {types_len[type]} 0\n"
@@ -233,6 +241,7 @@ def asm_programme(p):
     ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     init_vars = ""
+    #Initialisation des arguments
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
@@ -241,11 +250,12 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-    decl_var = asm_decl_var(p.children[1].children)
+    
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    decl_var = asm_decl_var()
     prog_asm = prog_asm.replace("DECL_VARS", decl_var)
 
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
     return prog_asm
 
 
