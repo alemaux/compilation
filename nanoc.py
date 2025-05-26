@@ -4,24 +4,28 @@ IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
 TYPE: "long" | "int" | "char" | "void" | "short"
-declaration: TYPE IDENTIFIER -> decl
+declaration: (TYPE | struct_type) IDENTIFIER -> decl
 DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
+struct_type: IDENTIFIER
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | DOUBLE -> double
          | NUMBER ->number
-command: command ";" (command)* ->sequence
+         | "new" IDENTIFIER "(" expression ("," expression)* ")" -> new_struct
+         | IDENTIFIER "." IDENTIFIER -> field_access
+command: (command ";")+ ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
-         |declaration ("=" expression)? ->declaration
-         |IDENTIFIER "=" expression ->affectation
+         |declaration ("=" expression)? -> declaration
+         |IDENTIFIER "=" expression -> affectation
          |IDENTIFIER "=""("CAST")" expression -> casting
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-struct:"typedef struct" "{" (declaration ";")* "}" IDENTIFIER -> struct
+struct_fields : (TYPE IDENTIFIER ";")+
+struct:"typedef struct" "{" struct_fields "}" IDENTIFIER ";"-> struct
 main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 program: (struct)* main -> programme
 %import  common.WS
@@ -50,6 +54,9 @@ pop rax
 cpt = iter(range(1000000))
 
 variables = {}
+struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
+#contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
+
 op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
 
 types_len = {
@@ -58,6 +65,11 @@ types_len = {
         "int" : "dd",
         "long" : "dq"
     }
+
+def parse_struct_def(tree):
+    struct_name = tree.children[-1].value
+    fields = [(f.children[0].value, f.children[1].value) for f in tree.children[0].children]#dans struct def les champs sont les fils du premier fils
+    struct[struct_name] = fields
 
 def pp_expression(e):
     if e.data in ['var','number','double'] : return f"{e.children[0].value}"
@@ -143,7 +155,6 @@ op2asm_int = {'+': "add rax, rbx", "-": "sub rax, rbx"}
 op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le moment juste les sommes et soustraction mais faire le reste
 
 cpt = iter(range(1000000))
-
 
 def asm_expression(e):
     if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
@@ -268,12 +279,10 @@ def asm_programme(p):
     if len(p.children) >= 2:
         for i in range(len(p.children) - 1):
             struct_def += asm_struct(p.children[i])
+            parse_struct_def(p.children[i])
     res = asm_main(p.children[-1])
     return res.replace("DECL_STRUCT", struct_def)
     
-
-
-
 if __name__ == "__main__":
 
     with open("sample.c") as f:
