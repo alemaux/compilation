@@ -241,8 +241,6 @@ def asm_programme(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
 
-
-
     #Initialisation des arguments
     init_vars = ""
     for i, c in enumerate(p.children[1].children):
@@ -252,14 +250,17 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-    
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
-    decl_var = asm_decl_var()
-    prog_asm = prog_asm.replace("DECL_VARS", decl_var)
-
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
     
-    #Gestion du retour 
+    #Gestion du corps du main, met à jour le dico variables pour pouvoir ensuite faire les déclarations
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    decl_var = asm_decl_var()
+    
+    #une fois que l'on a géré les variables passées en arguments et les variables déclarées dans le programme, on peut tout déclarer 
+    prog_asm = prog_asm.replace("DECL_VARS", decl_var) 
+
+    #Gestion du retour, nécessite que les variables soient déclarées
+    #Check de la correspondance des types 
     decl_type = p.children[0].value
     given_type = get_type_expression(p.children[3])
     if((given_type != decl_type) and (decl_type != "void")):
