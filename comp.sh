@@ -10,7 +10,7 @@ fi
 
 filename="$1"
 
-cd ~/work/Compilation
+cd ~/Bureau/dep_info/S8/compilation_bonfante/compilation
 
 echo "executing python"
 python3 nanoc.py
