@@ -1,20 +1,23 @@
 from lark import Lark
-
 g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
-TYPE: "long"| "int"| "char"| "void"
+TYPE: "long" | "int" | "char" | "void" | "short"
+declaration: TYPE IDENTIFIER -> decl
+DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
+CAST : "double" | "int"
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
-declaration: TYPE IDENTIFIER ->decl
 expression: IDENTIFIER ->var
-         | expression OPBIN expression ->opbin  
+         | expression OPBIN expression ->opbin
+         | DOUBLE -> double
          | NUMBER ->number
 command: command ";" (command)* ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
-         |declaration "=" expression ->declaration
+         |declaration ("=" expression)? ->declaration
          |IDENTIFIER "=" expression ->affectation
+         |IDENTIFIER "=""("CAST")" expression -> casting
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
@@ -25,8 +28,39 @@ program: (struct)* main -> programme
 %ignore WS
 """, start='program')
 
+def asm_expression(e):
+    if e.data == "number":
+        return f"mov rax, {e.children[0].value}\n"
+    elif e.data == "var":
+        return f"mov rax, [{e.children[0].value}]\n"
+    e_left = e.children[0]
+    e_op = e.children[1]
+    e_right = e.children[2]
+    asm_left = asm_expression(e_left)
+    asm_right = asm_expression(e_right)
+    op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
+    return f""";operation
+{asm_left}
+push rax
+{asm_right}
+mov rbx, rax
+pop rax
+{op2asm[e_op.value]}"""
+
+cpt = iter(range(1000000))
+
+variables = {}
+op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
+
+types_len = {
+        "char" : "db",
+        "short" : "dw",
+        "int" : "dd",
+        "long" : "dq"
+    }
+
 def pp_expression(e):
-    if e.data in ['var','number'] : return f"{e.children[0].value}"
+    if e.data in ['var','number','double'] : return f"{e.children[0].value}"
     if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"
     if e.data != "parentheses":
         e_left = e.children[0]
@@ -38,16 +72,22 @@ def pp_commande(c):
     if c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
-        return f"{var.value} = {pp_expression(exp)}"
+        return f"{var.value} = {pp_expression(exp)};"
+    if c.data == "casting" :
+        var = c.children[0]
+        cast = c.children[1]
+        exp = c.children[2]
+        return f"{var.value} = ({cast.value}) {pp_expression(exp)}"
     elif c.data == "skip": return "skip"
     elif c.data == "print": return f"print({pp_expression(c.children[0])})"
     elif c.data == "while":
         exp = c.children[0]
         body = c.children[1]
-        return f"while ({pp_expression(exp)}) {{{pp_commande(body)}}}"
+        return f"while {pp_expression(exp)}\n  {{{pp_commande(body)}}}"
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
+
         return f"{pp_commande(head)};\n{pp_commande(tail)}"
 
     return ""
@@ -57,8 +97,13 @@ def pp_list_var(lv):
     for v in lv:
         list_var += pp_declaration(v)
         list_var += ", "
+    return list_var[:-2]
 
-    return list_var[: -2]
+
+def get_vars_expression(e):
+    pass 
+
+
 
 def pp_declaration(d):
     type = d.children[0]
@@ -89,39 +134,68 @@ def pp_programme(p):
             result += pp_struct(p.children[i])
     result += pp_main(p.children[-1])
     return result
+    
 
-op2asm = {'+': "add rax, rbx", "-": " sub rax, rbx"}
+def get_vars_commande(c):
+    pass
+
+op2asm_int = {'+': "add rax, rbx", "-": "sub rax, rbx"}
+op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le moment juste les sommes et soustraction mais faire le reste
+
 cpt = iter(range(1000000))
 
 
 def asm_expression(e):
-    if e.data == 'var' : return f"mov rax, [{e.children[0].value}]\n"
-    if e.data == 'number' : return f"mov rax, {e.children[0].value}\n"
-    if e.data != "parentheses":
+    if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
+    if e.data == 'number' : return f"mov rax, {e.children[0].value}"
+    if e.data == 'double' : return f"movsd xmm0, {e.children[0].value}"
+    if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
-        return f"""{asm_left}
+
+        if(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
+            return f"""{asm_left}
 push rax
 {asm_right}
 mov rbx, rax
 pop rax
-{op2asm[e_op.value]}\n"""
+{op2asm_int[e_op.value]}"""
+        elif(e_left.data == 'double' or e_right.data == 'double'):
+            return f"""{asm_left}
+sub rsp, 8
+movsd [rsp], xmm0
+{asm_right}
+movsd xmm1, xmm0
+movsd xmm0, [rsp]
+add rdp, 8
+{op2asm_double[e_op.value]}"""
 
-    
+
 def asm_commande(c):
-    if c.data == "affectation":
+    if c.data == "declaration":
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        variables[var.value] = type.value
+        print(variables)
+        if len(c.children) >=2:
+            exp = c.children[1]
+            return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+    
+    elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
-        asm_exp = asm_expression(exp)
-        return f"""{asm_exp}
-mov [{var.value}], rax\n"""
-    elif c.data == "skip": return "nop\n"
+        if var in variables.keys():
+            return f"{asm_expression(exp)}\nmov [{var.value}], rax"
+        else :
+            raise Exception("Variable non déclarée")
+        
+    elif c.data =="skip": return "nop\n"
+
     elif c.data == "print": 
-        asm_exp = asm_expression(c.children[0])
-        return f"""{asm_exp}
+        return f"""[{asm_expression(c.children[0])}]
 mov rdi, rax
 mov rsi, fmt
 xor rax, rax
@@ -160,6 +234,13 @@ def asm_struct(p):
     size_qword = (total_size_bytes + 7) // 8
     return f"{struct_name}: resq {size_qword} ; taille {total_size_bytes} pour {struct_name}\n"
 
+def asm_decl_var(lst):
+    
+    decl_var = ""
+    for var,type in variables.items():
+        decl_var += f"{var} : {types_len[type]} 0\n"
+    return decl_var
+
 
 def asm_main(p):
     with open("moule.asm") as f:
@@ -169,14 +250,17 @@ def asm_main(p):
     init_vars = ""
     decl_vars = ""
     for i, c in enumerate(p.children[1].children):
+        variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
-        mov rdi, [rbx + {(i+1)*8}]
-        call atoi
-        mov [{c.children[1].value}], rax\n"""
-        decl_vars += f"{c.children[1].value}: dq 0 \n"
+
+mov rdi, [rbx + {8 * (i+1)}]
+call atoi
+mov [{c.children[1].value}], rax
+"""
+    decl_var = asm_decl_var(p.children[1].children)
+    prog_asm = prog_asm.replace("DECL_VARS", decl_var)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))    
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
     return prog_asm
 
 def asm_programme(p):
@@ -191,25 +275,12 @@ def asm_programme(p):
 
 
 if __name__ == "__main__":
-    with open("/home/mathus/compilation/compilo/compilation/sample.c") as f:
+
+    with open("sample.c") as f:
         src = f.read()
-    ast = g.parse(src)
-    print(ast)
-    print(pp_programme(ast))
-    print(asm_programme(ast))
-    res = asm_programme(ast)
-    with open("simple.asm", "w") as result:
+        ast = g.parse(src)
+        res = asm_programme(ast)
+        print(res)
+    with open("sample.asm", "w") as result:
         result.write(res)
 
-    
-    """res = asm_programme(ast)
-    print(pp_programme(ast))
-    with open("simple.asm", "w") as result:
-        result.write(res)"""
-
-    #print(ast.pretty('  '))
-#print(ast.data)
-#print(ast.children)
-#print(ast.children[0])
-#print(ast.children[0].type)
-#print(ast.children[0].value)
