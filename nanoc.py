@@ -103,9 +103,10 @@ def pp_commande(c):
         body = c.children[1]
         return f"while {pp_expression(exp)}\n  {{{pp_commande(body)}}}"
     elif c.data == "sequence":
-        head = c.children[0]
-        tail = c.children[1]
-        return f"{pp_commande(head)};\n{pp_commande(tail)}"
+        result = ""
+        for command in c.children:
+            result += f"{pp_commande(command)};\n"
+        return result
     elif c.data == "set_value":
         left = c.children[0]
         objet = left.children[0]
@@ -253,9 +254,10 @@ end{idx}: nop"""
 mov [{var} + {offset}], rax"""
 
     elif c.data == "sequence":
-        head = c.children[0]
-        tail = c.children[1]
-        return f"{asm_commande(head)}\n{asm_commande(tail)}"
+        result = ""
+        for command in c.children:
+            result += f"{asm_commande(command)}\n"
+        return result
     return ""
 
 
