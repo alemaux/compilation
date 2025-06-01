@@ -1,4 +1,5 @@
-from lark import Lark
+from lark import Lark, Tree
+
 g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
@@ -15,17 +16,18 @@ expression: IDENTIFIER ->var
          | DOUBLE -> double
          | NUMBER ->number
          | "new" IDENTIFIER "(" expression ("," expression)* ")" -> new_struct
-         | IDENTIFIER "." IDENTIFIER -> field_access
+field_access: IDENTIFIER "." IDENTIFIER
 command: (command ";")+ ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
          |declaration ("=" expression)? -> declaration
          |IDENTIFIER "=" expression -> affectation
          |IDENTIFIER "=""("CAST")" expression -> casting
+         |field_access "=" expression -> set_value
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-struct_fields : (TYPE IDENTIFIER ";")+
-struct:"typedef struct" "{" struct_fields "}" IDENTIFIER ";"-> struct
+struct_field : (TYPE IDENTIFIER ";")
+struct:"typedef struct" "{" struct_field+ "}" IDENTIFIER ";"-> struct
 main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 program: (struct)* main -> programme
 %import  common.WS
@@ -53,6 +55,8 @@ pop rax
 
 cpt = iter(range(1000000))
 
+types = ["long", "int", "char", "void", "short"]
+
 variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
 #contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
@@ -68,7 +72,9 @@ types_len = {
 
 def parse_struct_def(tree):
     struct_name = tree.children[-1].value
-    fields = [(f.children[0].value, f.children[1].value) for f in tree.children[0].children]#dans struct def les champs sont les fils du premier fils
+    fields = []
+    for i in range(len(tree.children) - 1):#on exclut le nom de la struct
+        fields.append((tree.children[i].children[0].value, tree.children[i].children[1].value))
     struct[struct_name] = fields
 
 def pp_expression(e):
@@ -99,8 +105,14 @@ def pp_commande(c):
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
-
         return f"{pp_commande(head)};\n{pp_commande(tail)}"
+    elif c.data == "set_value":
+        left = c.children[0]
+        objet = left.children[0]
+        champ = left.children[1]
+        value = c.children[1]
+        return f"{objet.value}.{champ.value} = {pp_expression(value)}"
+
 
     return ""
 
@@ -183,14 +195,23 @@ movsd xmm1, xmm0
 movsd xmm0, [rsp]
 add rdp, 8
 {op2asm_double[e_op.value]}"""
+    elif e.data == "field_access":
+        var = e.children[0].value  # exemple : p
+        field = e.children[1].value  # exemple : A
+        struct_type = variables[var]  # exemple : "Point"
+        offset = get_struct_offset(struct_type, field)
+        return f"mov rax, [{var} + {offset}]"
+
 
 
 def asm_commande(c):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
-        variables[var.value] = type.value
-        print(variables)
+        if not isinstance(type, Tree):
+            variables[var.value] = type.value
+        else :
+            variables[var.value] = type.children[0].value
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -222,11 +243,21 @@ jz end{idx}
 {asm_commande(body)}
 jmp loop{idx}
 end{idx}: nop"""
+    elif c.data == "set_value":
+        var = c.children[0].children[0].value 
+        field = c.children[0].children[1].value  
+        exp = c.children[1]
+        struct_type = variables[var]
+        offset = get_struct_offset(struct_type, field)
+        return f"""{asm_expression(exp)}
+mov [{var} + {offset}], rax"""
+
     elif c.data == "sequence":
         head = c.children[0]
         tail = c.children[1]
         return f"{asm_commande(head)}\n{asm_commande(tail)}"
     return ""
+
 
 def asm_struct(p):
     struct_name = p.children[-1].value 
@@ -246,11 +277,28 @@ def asm_struct(p):
     return f"{struct_name}: resq {size_qword} ; taille {total_size_bytes} pour {struct_name}\n"
 
 def asm_decl_var(lst):
-    
     decl_var = ""
-    for var,type in variables.items():
-        decl_var += f"{var} : {types_len[type]} 0\n"
+    for var, type in variables.items():
+        if type in types_len:
+            decl_var += f"{var} : {types_len[type]} 0\n"
+        elif type in struct:
+            # Calcule la taille en qword
+            size_bytes = sum(
+                8 for field_type, _ in struct[type]  # on suppose alignement sur 8 octets
+            )
+            size_qword = (size_bytes + 7) // 8
+            decl_var += f"{var} : resq {size_qword}\n"
+        else:
+            raise Exception(f"Type inconnu : {type}")
     return decl_var
+
+def get_struct_offset(struct_name, field_name):
+    offset = 0
+    for field_type, field in struct[struct_name]:
+        if field == field_name:
+            return offset
+        offset += 8  #on suppose 8 octets d'alignement
+    raise Exception(f"Champ {field_name} non trouvé dans struct {struct_name}")
 
 
 def asm_main(p):
@@ -290,6 +338,9 @@ if __name__ == "__main__":
         ast = g.parse(src)
         res = asm_programme(ast)
         print(res)
+        print(struct)
+        print(ast)
+        print(pp_programme(ast))
     with open("sample.asm", "w") as result:
         result.write(res)
 
