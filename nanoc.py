@@ -7,7 +7,6 @@ OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
 STRING: /"[^"]*"/
 TYPE: "long" | "int" | "char" | "void" | "short" | "string" | "double"
-declaration: TYPE IDENTIFIER 
 DOUBLE : /[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 liste_var: ->vide
@@ -125,17 +124,21 @@ def get_type_expression(e):
         if var_name in variables:
             return variables[var_name]
         else:
-            raise ValueError("Variable {var_name} utilisée mais pas initialisée")
+            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
     if e.data == "opbin":
         type1 = get_type_expression(e.children[0])
         type2 = get_type_expression(e.children[2])
-        if(type1==type2):
-            if type1 == "double":
-                return "double"
-            else:
-                return "int" 
-    else:
-        raise ValueError(f"Expression inattendue pour type : {e}")
+
+        if type1 == type2:
+            return type1
+
+        # Si le cast int → double est possible (même si c'est une constante ou une var)
+        if type1 == "double" and type2 == "int":
+            return "cast"
+
+        raise ValueError(f"Types incompatibles pour opération binaire : {type1} et {type2}")
+
+    raise ValueError(f"Expression inattendue pour type : {e}")
 
 def get_label(val):
     if val not in float_literals:
@@ -163,22 +166,62 @@ def asm_expression(e):
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
 
-        type_left = get_type_expression(e_left)
-        type_right = get_type_expression(e_right)
-        
-        if(type_left != type_right):
-            raise ValueError("Les deux éléments ne sont pas du même type")
-        elif(type_left == "double"):
-                        return f"""{asm_left}
+        type_exp = get_type_expression(e)
+
+        if(type_exp == "cast"):
+            if(e_left.data == "var"):
+                if e_right.data == "var":
+                    return f"""{asm_left}
 sub rsp, 8
 movsd [rsp], xmm0
+mov eax, [{e_right.children[0].value}]
+cvtsi2sd xmm0, eax
+movsd xmm1, xmm0
+movsd xmm0, [rsp]
+add rsp, 8
+{op2asm_double[e_op.value]}
+"""
+                else:
+                    int_val = e_right.children[0].value
+                    return f"""{asm_left}
+sub rsp, 8
+movsd [rsp], xmm0
+mov eax, {int_val}
+cvtsi2sd xmm0, eax
+movsd xmm1, xmm0
+movsd xmm0, [rsp]
+add rsp, 8
+{op2asm_double[e_op.value]}
+"""
+            else:
+            # Sinon cas plus compliqué : c'est une expression, on fait un asm spécifique
+            # Par exemple on génère asm_right en rax, puis conversion
+
+                asm_right_int = asm_expression(e_right)  # une fonction spécifique à faire
+                return f"""{asm_left}
+sub rsp, 8
+movsd [rsp], xmm0
+{asm_right_int}
+cvtsi2sd xmm0, rax
+movsd xmm1, xmm0
+movsd xmm0, [rsp]
+add rsp, 8
+{op2asm_double[e_op.value]}
+"""
+
+            
+
+        if(type_exp == "double"):
+                        return f"""{asm_left}
+sub rsp, 8
+movsd [rsp], xmm0\n
 {asm_right}
 movsd xmm1, xmm0
 movsd xmm0, [rsp]
 add rsp, 8
 {op2asm_double[e_op.value]}"""
 
-        elif(type_left == "int"):
+        elif(type_exp == "int"):
                         return f"""{asm_left}
 push rax
 {asm_right}
@@ -199,6 +242,8 @@ def asm_commande(c):
         code = ""
         if len(decla.children) >2:
             exp = decla.children[2]
+            if(get_type_expression(exp)!=type):
+                raise ValueError("Les deux éléments ne sont pas du même type")
             code_init = asm_expression(exp)
             if type.value == "double":
                 code += f"{code_init}\nmovsd [{var}], xmm0\n"
@@ -212,7 +257,7 @@ def asm_commande(c):
         asm_exp = asm_expression(exp)
         type_var = variables[var.value]
         type_exp = get_type_expression(exp)
-        if type_var != type_exp:
+        if (type_var != type_exp and type_exp!='cast'):
             raise ValueError("Affectation avec deux types différents")
         elif type_var == "double":
             return f"""{asm_exp}

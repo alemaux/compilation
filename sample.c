@@ -1,7 +1,7 @@
 double main(double X, double Y) {
-    double Z = 1.2;
+    int Z = 1;
     while(X) {
-        X = X - 0.1;
+        X = X - Z;
         Y = Y + 0.1;
     };
     printf(Y);
