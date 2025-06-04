@@ -257,8 +257,12 @@ def asm_commande(c):
         asm_exp = asm_expression(exp)
         type_var = variables[var.value]
         type_exp = get_type_expression(exp)
-        if (type_var != type_exp and type_exp!='cast'):
-            raise ValueError("Affectation avec deux types différents")
+        if (type_var != type_exp and type_exp!='cast'): #pour le moment juste double = int + int
+            return f"""{asm_exp}
+cvtsi2sd xmm0, rax
+movsd [{var.value}], xmm0
+"""
+        
         elif type_var == "double":
             return f"""{asm_exp}
 movsd [{var.value}], xmm0 \n"""
