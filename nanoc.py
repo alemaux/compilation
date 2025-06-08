@@ -9,6 +9,7 @@ declaration: (TYPE | struct_type) IDENTIFIER -> decl
 DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 struct_type: IDENTIFIER
+field_access: IDENTIFIER "." IDENTIFIER
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
@@ -16,11 +17,12 @@ expression: IDENTIFIER ->var
          | DOUBLE -> double
          | NUMBER ->number
          | "new" IDENTIFIER "(" expression ("," expression)* ")" -> new_struct
-field_access: IDENTIFIER "." IDENTIFIER
+         | field_access ->field_access
 command: (command ";")+ ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
          |declaration ("=" expression)? -> declaration
          |IDENTIFIER "=" expression -> affectation
+         |declaration "=" "new" struct_type "("")" -> malloc
          |IDENTIFIER "=""("CAST")" expression -> casting
          |field_access "=" expression -> set_value
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
@@ -60,8 +62,17 @@ types = ["long", "int", "char", "void", "short"]
 variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
 #contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
+variables_bss = {}#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
+allocated_vars = {}#pour les var avec malloc
 
 op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
+
+size_map = {
+    'char': 1,
+    'int': 8,  
+    'long': 8,
+    'void': 0   
+}
 
 types_len = {
         "char" : "db",
@@ -70,12 +81,17 @@ types_len = {
         "long" : "dq"
     }
 
+asm_decl_struct = ""
+
 def parse_struct_def(tree):
     struct_name = tree.children[-1].value
     fields = []
+    size = 0
     for i in range(len(tree.children) - 1):#on exclut le nom de la struct
         fields.append((tree.children[i].children[0].value, tree.children[i].children[1].value))
+        size += size_map[tree.children[i].children[0].value]
     struct[struct_name] = fields
+    size_map[struct_name] = size
 
 def pp_expression(e):
     if e.data in ['var','number','double'] : return f"{e.children[0].value}"
@@ -170,9 +186,12 @@ op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le mom
 cpt = iter(range(1000000))
 
 def asm_expression(e):
-    if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
-    if e.data == 'number' : return f"mov rax, {e.children[0].value}"
-    if e.data == 'double' : return f"movsd xmm0, {e.children[0].value}"
+    if e.data == 'var' : 
+        return f"mov rax, [{e.children[0].value}]"
+    if e.data == 'number' : 
+        return f"mov rax, {e.children[0].value}"
+    if e.data == 'double' : 
+        return f"movsd xmm0, {e.children[0].value}"
     if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
@@ -197,22 +216,23 @@ movsd xmm0, [rsp]
 add rdp, 8
 {op2asm_double[e_op.value]}"""
     elif e.data == "field_access":
-        var = e.children[0].value  # exemple : p
-        field = e.children[1].value  # exemple : A
+        var = e.children[0].children[0].value  # exemple : p
+        field = e.children[0].children[1].value  # exemple : A
         struct_type = variables[var]  # exemple : "Point"
         offset = get_struct_offset(struct_type, field)
         return f"mov rax, [{var} + {offset}]"
 
 
 
-def asm_commande(c):
+def asm_commande(c, lst = None):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
         if not isinstance(type, Tree):
             variables[var.value] = type.value
-        else :
+        else :#c'est une struct
             variables[var.value] = type.children[0].value
+            variables_bss[var.value] = type.children[0].value
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -252,24 +272,23 @@ end{idx}: nop"""
         offset = get_struct_offset(struct_type, field)
         return f"""{asm_expression(exp)}
 mov [{var} + {offset}], rax"""
-
+    
+    elif c.data == "malloc":
+        var = c.children[0].children[1].value
+        var_type = c.children[0].children[0].value
+        decl_type = c.children
     elif c.data == "sequence":
         result = ""
         for command in c.children:
             result += f"{asm_commande(command)}\n"
         return result
+    
+
     return ""
 
 
 def asm_struct(p):
-    struct_name = p.children[-1].value 
-    size_map = {
-        'char': 1,
-        'int': 8,   # pour l'alignement mémoire
-        'long': 8,
-        'void': 0   # void n'a pas de taille ici
-    }
-    
+    struct_name = p.children[-1].value
     total_size_bytes = 0
     for field in p.children[:-1]:
         typename = field.children[0].value
@@ -284,7 +303,6 @@ def asm_decl_var(lst):
         if type in types_len:
             decl_var += f"{var} : {types_len[type]} 0\n"
         elif type in struct:
-            # Calcule la taille en qword
             size_bytes = sum(
                 8 for field_type, _ in struct[type]  # on suppose alignement sur 8 octets
             )
@@ -306,32 +324,39 @@ def get_struct_offset(struct_name, field_name):
 def asm_main(p):
     with open("moule.asm") as f:
         prog_asm = f.read()
-    ret = asm_expression(p.children[3])
-    prog_asm = prog_asm.replace("RETOUR", ret)
+
     init_vars = ""
     decl_vars = ""
+    struct_asm = {} #struct déclarées dans le main et non passées en argument
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
-
 mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-    decl_var = asm_decl_var(p.children[1].children)
-    prog_asm = prog_asm.replace("DECL_VARS", decl_var)
+    decl_vars += asm_decl_var(p.children[1].children)
+    prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2], struct_asm))
+    structure = ""
+    for variable, type in variables_bss.items():
+        total_size_bytes = 0
+        for field in struct[type]:
+            total_size_bytes += size_map[field[0]]
+        size_qword = (total_size_bytes + 7) // 8
+        structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
+    prog_asm = prog_asm.replace("DECL_STRUCT", structure)
+    ret = asm_expression(p.children[3])
+    prog_asm = prog_asm.replace("RETOUR", ret)
     return prog_asm
 
 def asm_programme(p):
-    struct_def = ""
     if len(p.children) >= 2:
         for i in range(len(p.children) - 1):
-            struct_def += asm_struct(p.children[i])
             parse_struct_def(p.children[i])
     res = asm_main(p.children[-1])
-    return res.replace("DECL_STRUCT", struct_def)
+    return res
     
 if __name__ == "__main__":
 
@@ -342,7 +367,7 @@ if __name__ == "__main__":
         print(res)
         print(struct)
         print(ast)
-        print(pp_programme(ast))
+        #print(pp_programme(ast))
     with open("sample.asm", "w") as result:
         result.write(res)
 

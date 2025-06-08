@@ -6,12 +6,9 @@ typedef struct{
     
 int main(int X, int Y) {
     Point P;
-    P.A = 3;
+    P.A = X + Y;
     P.B = 4;
-    while(X){
-        X= X - 1;
-        Y = Y + 1;
-    };
-    return(Y)
+    
+    return(P.A)
 }
 
