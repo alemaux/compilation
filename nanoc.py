@@ -67,6 +67,7 @@ variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
 #contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
 variables_bss = {}#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
+struct_bss = {}
 allocated_vars = {}#pour les var avec malloc
 
 op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
@@ -277,9 +278,10 @@ def asm_command(c, lst = None):
             if type.value == "void":
                 raise Exception("c'est pas un vrai type void")
             variables[var.value] = type.value
+            variables_bss[var.value] = type.value
         else :#c'est une struct
             variables[var.value] = type.children[0].value
-            variables_bss[var.value] = type.children[0].value
+            struct_bss[var.value] = type.children[0].value
 
         if len(c.children) >=2:
             exp = c.children[1]
@@ -345,7 +347,7 @@ def asm_struct(p):
     size_qword = (total_size_bytes + 7) // 8
     return f"{struct_name}: resq {size_qword} ; taille {total_size_bytes} pour {struct_name}\n"
 
-def asm_decl_var(lst):
+def asm_decl_var(lst):#variables en argument
     decl_var = ""
     for var, type in variables.items():
         if type in types_len:
@@ -375,7 +377,6 @@ def asm_main(p):
 
     init_vars = ""
     decl_vars = ""
-    struct_asm = {} #struct déclarées dans le main et non passées en argument
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
@@ -386,12 +387,16 @@ mov [{c.children[1].value}], rax
     decl_vars += asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2], struct_asm))
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
     structure = ""
-    for variable, type in variables_bss.items():
+    for variable, type in struct_bss.items():
         total_size_bytes = 0
         for field in struct[type]:
             total_size_bytes += size_map[field[0]]
+        size_qword = (total_size_bytes + 7) // 8
+        structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
+    for variable, type in variables_bss.items():
+        total_size_bytes = size_map[type]
         size_qword = (total_size_bytes + 7) // 8
         structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
     prog_asm = prog_asm.replace("DECL_STRUCT", structure)
@@ -408,7 +413,7 @@ def asm_programme(p):
     
 if __name__ == "__main__":
 
-    with open("sample_struct.c") as f:
+    with open("sample.c") as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
@@ -416,6 +421,6 @@ if __name__ == "__main__":
         print(struct)
         print(ast)
         #print(pp_programme(ast))
-    with open("sample_struct.asm", "w") as result:
+    with open("sample.asm", "w") as result:
         result.write(res)
 
