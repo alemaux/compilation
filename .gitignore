@@ -1,1 +1,6 @@
 comp.sh
+
+*.out
+*.o
+*.asm
+*.nasm
