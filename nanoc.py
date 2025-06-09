@@ -16,13 +16,12 @@ expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | DOUBLE -> double
          | NUMBER ->number
-         | "new" IDENTIFIER "(" expression ("," expression)* ")" -> new_struct
          | field_access ->field_access
 command: (command ";")+ ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
          |declaration ("=" expression)? -> declaration
          |IDENTIFIER "=" expression -> affectation
-         |declaration "=" "new" struct_type "("")" -> malloc
+         |declaration "=" "new" struct_type "("expression ("," expression)* ")" -> malloc
          |IDENTIFIER "=""("CAST")" expression -> casting
          |field_access "=" expression -> set_value
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
@@ -371,7 +370,7 @@ def asm_programme(p):
     
 if __name__ == "__main__":
 
-    with open("sample.c") as f:
+    with open("sample_struct.c") as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
@@ -379,6 +378,6 @@ if __name__ == "__main__":
         print(struct)
         print(ast)
         #print(pp_programme(ast))
-    with open("sample.asm", "w") as result:
+    with open("sample_struct.asm", "w") as result:
         result.write(res)
 
