@@ -15,7 +15,7 @@ field_access: IDENTIFIER "." IDENTIFIER ("." IDENTIFIER)*
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
-         | expression OPBIN expression ->opbin
+         | expression OPBIN expression -> opbin
          | DOUBLE -> double
          | NUMBER ->number
          | STRING ->string
@@ -23,19 +23,19 @@ expression: IDENTIFIER ->var
          | expression "[" expression "]" -> index
          | field_access ->field_access
 command: (command ";")+ ->sequence
-         |"while" "(" expression ")" "{" command "}" ->while
+         |"while" "(" expression ")" "{" command "}" -> while
          |declaration ("=" expression)? -> declaration
          |IDENTIFIER "=" expression -> affectation
          |declaration "=" "new" struct_type "("expression ("," expression)* ")" -> malloc
          |IDENTIFIER "=""("CAST")" expression -> casting
          |field_access "=" expression -> set_value
-         |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
-         |"printf" "(" expression ")" ->print
+         |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? -> ite
+         |"printf" "(" expression ")" -> print
          |"skip" ->skip
 struct_field : (TYPE IDENTIFIER ";") -> base_type
          |IDENTIFIER IDENTIFIER ";" -> struct_type
 struct:"typedef struct" "{" struct_field+ "}" IDENTIFIER ";"-> struct
-main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" -> main
 program: (struct)* main -> programme
 %import  common.WS
 %ignore WS
@@ -48,7 +48,7 @@ types = ["long", "int", "char", "void", "short", "string"]
 variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
 #contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
-variables_bss = {}#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
+#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
 struct_bss = {}
 allocated_vars = {}#pour les var avec malloc
 
@@ -58,8 +58,7 @@ size_map = {
     'char': 1,
     'int': 8,  
     'long': 8,
-    'void': 0,
-    'string':8
+    'void': 0   
 }
 
 types_len = {
@@ -134,11 +133,15 @@ def pp_expression(e):
             return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
         else :
             raise Exception("pas le bon type")
+    if e.data == "field_access":
+        objet = e.children[0].children[0].value
+        field = e.children[0].children[1].value
+        return f"{objet}.{field}"
     if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index', "field_access"] :
             return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
         else :
             raise Exception("pas le bon type")
@@ -146,15 +149,15 @@ def pp_expression(e):
     
 
 def pp_commande(c):
-    if c.data == "decl" :
+    if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
         if len(c.children) > 1:
             exp = c.children[1]
             return f"{type.value} {var.value} = {pp_expression(exp)}"
         return f"{type.value} {var.value}"
-    elif c.data == "decl":
-        type = c.children[0].children[0]
+    elif c.data == "declaration":
+        type = c.children[0].children[0].children[0]
         var = c.children[0].children[1]
         if len(c.children) >1:
             exp = c.children[1]
@@ -178,7 +181,7 @@ def pp_commande(c):
     elif c.data == "sequence":
         result = ""
         for command in c.children:
-            result += f"{pp_commande(command)};\n"
+            result += f"    {pp_commande(command)};\n"
         return result
     elif c.data == "set_value":
         left = c.children[0]
@@ -213,17 +216,16 @@ def pp_main(p):
     list_var = pp_list_var(p.children[1].children)
     commands = pp_commande(p.children[2])
     retour = pp_expression(p.children[3])
-    corps = f"""{commands}
-    return({retour})
+    corps = f"""{commands}    return({retour})
     """
     return f"""{type} main({list_var}) {{
-    {corps}}} """
+{corps}}} """
 
 def pp_struct(p):
     result = ""
     for i in range(len(p.children)-1):
         result += f"{pp_declaration(p.children[i])};\n"
-    return f"typedef struct {{{result}}}{p.children[-1]}\n"
+    return f"typedef struct {{{result}}}{p.children[-1]};\n\n"
 
 def pp_programme(p):
     result = ""
@@ -374,15 +376,13 @@ push rax
 mov rbx, rax
 pop rax
 {op2asm_int[e_op.value]}"""
-
     elif e.data == "field_access":
         var = e.children[0].children[0].value  # exemple : p
         field = e.children[0].children[1].value  # exemple : A
-        struct_type = variables[var]  # exemple : "Point"
+        struct_type = struct_bss[var]  # exemple : "Point"
         offset = get_struct_offset(struct_type, field)
         return f"mov rax, [{var} + {offset}]"
 # fin opbin
-
 
 
 def asm_command(c, lst = None):
@@ -393,11 +393,10 @@ def asm_command(c, lst = None):
             if type.value == "void":
                 raise Exception("c'est pas un vrai type void")
             variables[var.value] = type.value
-            variables_bss[var.value] = type.value
+            #variables_bss[var.value] = type.value
         else :#c'est une struct
-            variables[var.value] = type.children[0].value
+            #variables[var.value] = type.children[0].value
             struct_bss[var.value] = type.children[0].value
-
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -437,11 +436,10 @@ end{idx}: nop"""
         var = c.children[0].children[0].value 
         field = c.children[0].children[1].value  
         exp = c.children[1]
-        struct_type = variables[var]
+        struct_type = struct_bss[var]
         offset = get_struct_offset(struct_type, field)
         return f"""{asm_expression(exp)}
 mov [{var} + {offset}], rax"""
-    
     elif c.data == "malloc":
         var = c.children[0].children[1].value
         var_type = c.children[0].children[0].value
@@ -503,20 +501,15 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-
     decl_vars += asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    
     structure = ""
     for variable, type in struct_bss.items():
         total_size_bytes = 0
         for field in struct[type]:
             total_size_bytes += size_map[field[0]]
-        size_qword = (total_size_bytes + 7) // 8
-        structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
-    for variable, type in variables_bss.items():
-        total_size_bytes = size_map[type]
         size_qword = (total_size_bytes + 7) // 8
         structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
     prog_asm = prog_asm.replace("DECL_STRUCT", structure)
@@ -537,7 +530,7 @@ def asm_programme(p):
             parse_struct_def(p.children[i])
     res = asm_main(p.children[-1])
     return res
-    
+
 if __name__ == "__main__":
     with open(sys.argv[1]) as f: #"sample.c"
         src = f.read()
@@ -546,7 +539,6 @@ if __name__ == "__main__":
         print(res)
         print(struct)
         print(ast)
-        ##print(pp_programme(ast))
+        print(pp_programme(ast))
     with open("sample.asm", "w") as result:
         result.write(res)
-
