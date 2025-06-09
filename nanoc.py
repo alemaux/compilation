@@ -1,3 +1,4 @@
+import sys
 from lark import Lark, Tree
 
 g = Lark("""
@@ -40,25 +41,6 @@ program: (struct)* main -> programme
 %ignore WS
 """, start='program')
 
-def asm_expression(e):
-    if e.data == "number":
-        return f"mov rax, {e.children[0].value}\n"
-    elif e.data == "var":
-        return f"mov rax, [{e.children[0].value}]\n"
-    e_left = e.children[0]
-    e_op = e.children[1]
-    e_right = e.children[2]
-    asm_left = asm_expression(e_left)
-    asm_right = asm_expression(e_right)
-    op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
-    return f""";operation
-{asm_left}
-push rax
-{asm_right}
-mov rbx, rax
-pop rax
-{op2asm[e_op.value]}"""
-
 cpt = iter(range(1000000))
 
 types = ["long", "int", "char", "void", "short"]
@@ -97,6 +79,27 @@ def parse_struct_def(tree):
         size += size_map[tree.children[i].children[0].value]
     struct[struct_name] = fields
     size_map[struct_name] = size
+
+
+def get_type_expression(e):
+    if e.data == "number":
+        return "int" #Entier par défaut : int
+    if e.data == "double":
+        return "double" #Float par défaut : double
+    if e.data == "var":
+        var_name = e.children[0].value
+        if var_name in variables:
+            return variables[var_name] #Si la variable est déclarée
+        else:
+            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
+    if e.data == "opbin":
+        type1 = get_type_expression(e.children[0])
+        type2 = get_type_expression(e.children[2])
+        if(type1==type2):
+            return type1
+    else:
+        raise ValueError(f"Expression inattendue pour type : {e}")
+
 
 def pp_expression(e):
     if e.data in ['var','number','double', 'string'] : return f"{e.children[0].value}"
@@ -234,7 +237,6 @@ def asm_expression(e):
         e_right = e.children[2]
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
-
         if(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
             return f"""{asm_left}
 push rax
@@ -400,6 +402,12 @@ mov [{c.children[1].value}], rax
         size_qword = (total_size_bytes + 7) // 8
         structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
     prog_asm = prog_asm.replace("DECL_STRUCT", structure)
+    #Gestion du retour, nécessite que les variables soient déclarées
+    #Check de la correspondance des types 
+    decl_type = p.children[0].value
+    given_type = get_type_expression(p.children[3])
+    if((given_type != decl_type) and (decl_type != "void")):
+        raise Exception(f"Pas le bon type de retour : déclaré {p.children[0].value}, donné {get_type_expression(p.children[3])}")
     ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     return prog_asm
@@ -412,15 +420,14 @@ def asm_programme(p):
     return res
     
 if __name__ == "__main__":
-
-    with open("sample.c") as f:
+    with open(sys.argv[1]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
         print(res)
         print(struct)
         print(ast)
-        #print(pp_programme(ast))
+        ##print(pp_programme(ast))
     with open("sample.asm", "w") as result:
         result.write(res)
 
