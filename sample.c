@@ -1,11 +1,11 @@
 string main(long X, long Y, string w, string concat) {
     int A = 13;
-    string h = "aazz";
+    string h = "hello";
     printf(45);
     printf(h);
     w = "world";
     printf(w);
-    concat = w + h;
+    concat = h + w;
     printf(concat);
     while(X){
         X= X - 1;

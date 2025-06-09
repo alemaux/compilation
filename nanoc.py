@@ -61,7 +61,8 @@ size_map = {
     'void': 0,
     'float': 8 ,
     'double': 8,
-    'string':8
+    'string':8,
+    'len':8
 }
 
 types_len = {
@@ -69,13 +70,15 @@ types_len = {
         "short" : "dw",
         "int" : "dd",
         "long" : "dq",
-        "string" : "dq" # pointeur
+        "string" : "dq", # pointeur
+        "len" : "dq"
     }
 
 format = {
     "number" : "fmt_int",
     "int" : "fmt_int",
-    "string" : "fmt_string"
+    "string" : "fmt_string",
+    "len" : "fmt_int"
 }
 
 asm_decl_struct = ""
@@ -160,7 +163,7 @@ def pp_commande(c):
             return f"{type.value} {var.value} = {pp_expression(exp)}"
         return f"{type.value} {var.value}"
     elif c.data == "declaration":
-        type = c.children[0].children[0].children[0]
+        type = c.children[0].children[0]#.children[0]
         var = c.children[0].children[1]
         if len(c.children) >1:
             exp = c.children[1]
@@ -268,6 +271,25 @@ mov rbx, rax"""
         resultat = resultat + f"\nmov byte [rbx + {l}], 0"
         return resultat
 
+    if e.data == 'len' :
+        child = e.children[0] #on prend en compte que des var
+        if child.data == 'var' and variables[child.children[0].value]== "string":
+            pointeur = child.children[0]
+            resultat = f"""mov rdi, [{pointeur}]
+xor rcx, rcx       ; compteur longueur
+.len1_loop:
+    cmp byte [rdi], 0
+    je .len1_done
+    inc rcx
+    inc rdi
+    jmp .len1_loop
+.len1_done:
+    mov rax, rcx"""
+            return resultat
+        #elif child.data == 'string':
+        else :
+            raise Exception("pas le bon type")
+        
     # début opbin
     if e.data == "opbin":
         e_left = e.children[0]
@@ -328,15 +350,15 @@ mov rdi, rbx           ; pointeur de destination = buffer
 .copy_s1:
     mov al, byte [rsi]
     cmp al, 0
-    je .copy_s2
+    je .copy_s1_done
     mov [rdi], al
     inc rsi
     inc rdi
     jmp .copy_s1"""
 
                 # Copier s_right à la suite
-                resultat = resultat + f"""\nmov rsi, [{pointeur_right}]
-dec rdi
+                resultat = resultat + f"""\n.copy_s1_done:
+mov rsi, [{pointeur_right}]
 .copy_s2:
     mov al, byte [rsi]
     cmp al, 0
