@@ -167,7 +167,6 @@ def asm_expression(e):
         e_right = e.children[2]
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
-
         if(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
             return f"""{asm_left}
 push rax
