@@ -97,6 +97,14 @@ def get_type_expression(e):
         type2 = get_type_expression(e.children[2])
         if(type1==type2):
             return type1
+    if e.data == "field_access":
+        objet = e.children[0].children[0].value
+        type_objet = struct_bss[objet]
+        champ = e.children[0].children[1].value
+        for elem in struct[type_objet]:
+            if elem[1] == champ:
+                return elem[0] 
+        raise ValueError(f"Expression inattendue pour type : {e}")
     else:
         raise ValueError(f"Expression inattendue pour type : {e}")
 
@@ -420,7 +428,7 @@ def asm_programme(p):
     return res
     
 if __name__ == "__main__":
-    with open(sys.argv[1]) as f:
+    with open(sys.argv[0]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
