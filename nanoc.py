@@ -426,13 +426,13 @@ def asm_programme(p):
     return res
 
 if __name__ == "__main__":
-    with open("sample_struct.c") as f:
+    with open(sys.argv[0]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
-        #print(res)
+        print(res)
         print(struct)
-        #print(ast)
+        print(ast)
         print(pp_programme(ast))
-    #with open("sample.asm", "w") as result:
-    #    result.write(res)
+    with open("sample.asm", "w") as result:
+        result.write(res)
