@@ -125,11 +125,15 @@ def pp_expression(e):
             return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
         else :
             raise Exception("pas le bon type")
+    if e.data == "field_access":
+        objet = e.children[0].children[0].value
+        field = e.children[0].children[1].value
+        return f"{objet}.{field}"
     if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index', "field_access"] :
             return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
         else :
             raise Exception("pas le bon type")
@@ -137,15 +141,15 @@ def pp_expression(e):
     
 
 def pp_commande(c):
-    if c.data == "decl" :
+    if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
         if len(c.children) > 1:
             exp = c.children[1]
             return f"{type.value} {var.value} = {pp_expression(exp)}"
         return f"{type.value} {var.value}"
-    elif c.data == "decl":
-        type = c.children[0].children[0]
+    elif c.data == "declaration":
+        type = c.children[0].children[0].children[0]
         var = c.children[0].children[1]
         if len(c.children) >1:
             exp = c.children[1]
@@ -214,7 +218,7 @@ def pp_struct(p):
     result = ""
     for i in range(len(p.children)-1):
         result += f"{pp_declaration(p.children[i])};\n"
-    return f"typedef struct {{{result}}}{p.children[-1]}\n"
+    return f"typedef struct {{{result}}}{p.children[-1]};\n\n"
 
 def pp_programme(p):
     result = ""
@@ -271,14 +275,12 @@ push rax
 mov rbx, rax
 pop rax
 {op2asm_int[e_op.value]}"""
-
     elif e.data == "field_access":
         var = e.children[0].children[0].value  # exemple : p
         field = e.children[0].children[1].value  # exemple : A
         struct_type = struct_bss[var]  # exemple : "Point"
         offset = get_struct_offset(struct_type, field)
         return f"mov rax, [{var} + {offset}]"
-
 
 
 def asm_command(c, lst = None):
@@ -293,7 +295,6 @@ def asm_command(c, lst = None):
         else :#c'est une struct
             #variables[var.value] = type.children[0].value
             struct_bss[var.value] = type.children[0].value
-
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -333,7 +334,6 @@ end{idx}: nop"""
         offset = get_struct_offset(struct_type, field)
         return f"""{asm_expression(exp)}
 mov [{var} + {offset}], rax"""
-    
     elif c.data == "malloc":
         var = c.children[0].children[1].value
         var_type = c.children[0].children[0].value
@@ -426,13 +426,13 @@ def asm_programme(p):
     return res
 
 if __name__ == "__main__":
-    with open("sample.c") as f:
+    with open("sample_struct.c") as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
-        print(res)
+        #print(res)
         print(struct)
-        print(ast)
-        ##print(pp_programme(ast))
-    with open("sample.asm", "w") as result:
-        result.write(res)
+        #print(ast)
+        print(pp_programme(ast))
+    #with open("sample.asm", "w") as result:
+    #    result.write(res)
