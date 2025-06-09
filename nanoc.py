@@ -570,6 +570,6 @@ if __name__ == "__main__":
         print(struct)
         print(ast)
         ##print(pp_programme(ast))
-    with open("sample.asm", "w") as result:
+    with open("simple.asm", "w") as result:
         result.write(res)
 
