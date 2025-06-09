@@ -1,9 +1,14 @@
-extern printf, atoi, malloc
+extern printf, atoi
+extern malloc
+extern free
 
 section .data
 DECL_VARS
 argv : dq 0
 fmt_int: db "%d", 10, 0
+
+section .bss
+DECL_STRUCT
 
 global main
 section .text
