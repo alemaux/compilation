@@ -1,3 +1,4 @@
+import sys
 from lark import Lark
 g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
@@ -272,7 +273,7 @@ mov [{c.children[1].value}], rax
 
 
 if __name__ == "__main__":
-    with open("sample.c") as f:
+    with open(sys.argv[1]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)

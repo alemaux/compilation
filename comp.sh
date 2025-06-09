@@ -12,10 +12,10 @@ filename="$1"
 
 cd ~/Bureau/dep_info/S8/compilation_bonfante/compilation
 
-echo "executing python"
-python3 nanoc.py
-echo "nasm on $1"
-nasm -f elf64 "$1"
-echo "compilation on ${filename%.*}.o"
-gcc -no-pie "${filename%.*}.o"
-rm {filename%.*}.o
+echo "executing python on $1"
+python3 nanoc.py $1
+echo "nasm on sample.asm"
+nasm -f elf64 sample.asm
+echo "compilation on sample.o"
+gcc -no-pie "sample.o"
+rm sample.o
