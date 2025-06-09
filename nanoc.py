@@ -59,7 +59,8 @@ size_map = {
     'int': 8,  
     'long': 8,
     'void': 0,
-    'float': 8   
+    'float': 8 ,
+    'double': 8   
 }
 
 types_len = {
