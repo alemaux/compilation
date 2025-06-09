@@ -43,7 +43,7 @@ program: (struct)* main -> programme
 
 cpt = iter(range(1000000))
 
-types = ["long", "int", "char", "void", "short"]
+types = ["long", "int", "char", "void", "short", "string"]
 
 variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
@@ -58,7 +58,8 @@ size_map = {
     'char': 1,
     'int': 8,  
     'long': 8,
-    'void': 0   
+    'void': 0,
+    'string':8
 }
 
 types_len = {
@@ -66,49 +67,16 @@ types_len = {
         "short" : "dw",
         "int" : "dd",
         "long" : "dq",
-        "string" : "dq"
+        "string" : "dq" # pointeur
     }
 
+format = {
+    "number" : "fmt_int",
+    "int" : "fmt_int",
+    "string" : "fmt_string"
+}
+
 asm_decl_struct = ""
-
-def parse_struct_def(tree):
-    struct_name = tree.children[-1].value
-    fields = []
-    size = 0
-    for i in range(len(tree.children) - 1):#on exclut le nom de la struct
-        fields.append((tree.children[i].children[0].value, tree.children[i].children[1].value))
-        size += size_map[tree.children[i].children[0].value]
-    struct[struct_name] = fields
-    size_map[struct_name] = size
-
-
-def get_type_expression(e):
-    if e.data == "number":
-        return "int" #Entier par défaut : int
-    if e.data == "double":
-        return "double" #Float par défaut : double
-    if e.data == "var":
-        var_name = e.children[0].value
-        if var_name in variables:
-            return variables[var_name] #Si la variable est déclarée
-        else:
-            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
-    if e.data == "opbin":
-        type1 = get_type_expression(e.children[0])
-        type2 = get_type_expression(e.children[2])
-        if(type1==type2):
-            return type1
-    if e.data == "field_access":
-        objet = e.children[0].children[0].value
-        type_objet = struct_bss[objet]
-        champ = e.children[0].children[1].value
-        for elem in struct[type_objet]:
-            if elem[1] == champ:
-                return elem[0] 
-        raise ValueError(f"Expression inattendue pour type : {e}")
-    else:
-        raise ValueError(f"Expression inattendue pour type : {e}")
-
 
 asm_decl_struct = ""
 
@@ -276,7 +244,7 @@ cpt = iter(range(1000000))
 
 def asm_expression(e):
     if e.data == 'var' : 
-        return f"mov rax, [{e.children[0].value}]"
+        return f"mov rax, [{e.children[0].value}]"  #[h] : on rprend le contenu du pointeur h 
     if e.data == 'number' : 
         return f"mov rax, {e.children[0].value}"
     if e.data == 'double' : 
@@ -305,12 +273,15 @@ mov rbx, rax"""
 
         # le premier cas de figure traitera des var pour ne plus avoir à s'embêter avec après en fonction du typage
         if(e_left.data == 'var' and e_right.data == 'var'):
-            type_left = variables[e_left.value]
-            type_right = variables[e_right.value]
+            pointeur_left = e_left.children[0].value
+            pointeur_right = e_right.children[0].value
+            type_left = variables[pointeur_left]
+            type_right = variables[pointeur_right]
+            # variables_bss[var.value] = type.value
             if(type_left == 'string' and type_right == 'string' and e_op.value == '+'):
                 resultat = ""
-                pointeur_left = e_left.value
-                pointeur_right = e_right.value
+                print(pointeur_left)
+                print("\n\n\n\n\n")
                 s_left = ""
                 s_right = ""
 
@@ -341,7 +312,7 @@ xor rcx, rcx
                 # r8 = len1, r9 = len2
                 resultat = resultat + f"""\nmov rax, r8
 add rax, r9
-add rax, 1         ; pour le '\0'
+add rax, 1         ; pour le 'backslash 0'
 mov rdi, rax       ; rdi = taille
 call malloc        ; retourne pointeur dans rax
 mov rbx, rax       ; rbx = pointeur du buffer alloué"""
@@ -351,20 +322,21 @@ mov rbx, rax       ; rbx = pointeur du buffer alloué"""
 mov rdi, rbx           ; pointeur de destination = buffer
 .copy_s1:
     mov al, byte [rsi]
-    mov [rdi], al
     cmp al, 0
     je .copy_s2
+    mov [rdi], al
     inc rsi
     inc rdi
     jmp .copy_s1"""
 
                 # Copier s_right à la suite
                 resultat = resultat + f"""\nmov rsi, [{pointeur_right}]
+dec rdi
 .copy_s2:
     mov al, byte [rsi]
-    mov [rdi], al
     cmp al, 0
     je .concat_done
+    mov [rdi], al
     inc rsi
     inc rdi
     jmp .copy_s2
@@ -440,9 +412,13 @@ def asm_command(c, lst = None):
         
     elif c.data =="skip": return "nop\n"
 
-    elif c.data == "print": 
+    elif c.data == "print":
+        if(c.children[0].children[0].value in variables):
+            fmt = format[variables[c.children[0].children[0]]]
+        else :
+            fmt = format[c.children[0].data]
         return f"""{asm_expression(c.children[0])}
-mov rdi, fmt
+mov rdi, {fmt}
 mov rsi, rax
 xor rax, rax
 call printf
@@ -551,6 +527,7 @@ mov [{c.children[1].value}], rax
     if((given_type != decl_type) and (decl_type != "void")):
         raise Exception(f"Pas le bon type de retour : déclaré {p.children[0].value}, donné {get_type_expression(p.children[3])}")
     ret = asm_expression(p.children[3])
+    ret = ret + f"\nmov rdi, {format[p.children[0].value]}\n"
     prog_asm = prog_asm.replace("RETOUR", ret)
     return prog_asm
 
@@ -562,7 +539,7 @@ def asm_programme(p):
     return res
     
 if __name__ == "__main__":
-    with open(sys.argv[1]) as f:
+    with open(sys.argv[1]) as f: #"sample.c"
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
@@ -570,6 +547,6 @@ if __name__ == "__main__":
         print(struct)
         print(ast)
         ##print(pp_programme(ast))
-    with open("simple.asm", "w") as result:
+    with open("sample.asm", "w") as result:
         result.write(res)
 
