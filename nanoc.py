@@ -562,7 +562,7 @@ def asm_programme(p):
     return res
     
 if __name__ == "__main__":
-    with open(sys.argv[0]) as f:
+    with open(sys.argv[1]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
