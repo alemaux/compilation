@@ -9,7 +9,7 @@ declaration: (TYPE | struct_type) IDENTIFIER -> decl
 DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 struct_type: IDENTIFIER
-field_access: IDENTIFIER "." IDENTIFIER
+field_access: IDENTIFIER "." IDENTIFIER ("." IDENTIFIER)*
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
