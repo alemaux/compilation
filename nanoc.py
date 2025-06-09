@@ -58,7 +58,8 @@ types_len = {
         "char" : "db",
         "short" : "dw",
         "int" : "dd",
-        "long" : "dq"
+        "long" : "dq",
+        "string" : "dq"
     }
 
 def pp_expression(e):
@@ -152,6 +153,21 @@ def asm_expression(e):
     if e.data == 'var' : return f"mov rax, [{e.children[0].value}]"
     if e.data == 'number' : return f"mov rax, {e.children[0].value}"
     if e.data == 'double' : return f"movsd xmm0, {e.children[0].value}"
+    if e.data == 'string' :
+        # par convention malloc regarde la taille allouée dans rdi et renvoie le pointeur dans rax
+        s = e.children[0].value
+        l = len(s)
+        #return f"mov rdi, {len(s)}\ncall malloc"
+        # on garde la valeur du pointeur dans rax et on la copie dans rbx pour écrire la chaîne de caractères, tout en gardent le pointeur
+        resultat = f"""mov rdi, {l+1}
+call malloc
+mov rbx, rax"""
+        for i in range(l):
+            resultat = resultat + f"\nmov byte [rbx + {i}], {ord(s[i])}" # donne le caractère ASCII correspondant au char (ex "h" --> 104)
+        resultat = resultat + f"\nmov byte [rbx + {l}], 0"
+        return resultat
+
+    # début opbin
     if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
@@ -159,7 +175,81 @@ def asm_expression(e):
         asm_left = asm_expression(e_left)
         asm_right = asm_expression(e_right)
 
-        if(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
+        # le premier cas de figure traitera des var pour ne plus avoir à s'embêter avec après en fonction du typage
+        if(e_left.data == 'var' and e_right.data == 'var'):
+            type_left = variables[e_left.value]
+            type_right = variables[e_right.value]
+            if(type_left == 'string' and type_right == 'string' and e_op.value == '+'):
+                resultat = ""
+                pointeur_left = e_left.value
+                pointeur_right = e_right.value
+                s_left = ""
+                s_right = ""
+
+                # Calculer la longueur de chaque chaîne (s_left et s_right)
+                resultat = resultat + f"""mov rdi, [{pointeur_left}]       ; copie pour ne pas perdre rsi
+xor rcx, rcx       ; compteur longueur s_left
+.len1_loop:
+    cmp byte [rdi], 0
+    je .len1_done
+    inc rcx
+    inc rdi
+    jmp .len1_loop
+.len1_done:
+    mov r8, rcx        ; r8 = len1"""
+                
+                resultat = resultat + f"""\nmov rdi, [{pointeur_right}]
+xor rcx, rcx
+.len2_loop:
+    cmp byte [rdi], 0
+    je .len2_done
+    inc rcx
+    inc rdi
+    jmp .len2_loop
+.len2_done:
+    mov r9, rcx        ; r9 = len2"""
+
+                # Allouer malloc(len1 + len2 + 1)
+                # r8 = len1, r9 = len2
+                resultat = resultat + f"""\nmov rax, r8
+add rax, r9
+add rax, 1         ; pour le '\0'
+mov rdi, rax       ; rdi = taille
+call malloc        ; retourne pointeur dans rax
+mov rbx, rax       ; rbx = pointeur du buffer alloué"""
+
+                # Copier s_left dans le buffer
+                resultat = resultat + f"""\nmov rsi, [{pointeur_left}]
+mov rdi, rbx           ; pointeur de destination = buffer
+.copy_s1:
+    mov al, byte [rsi]
+    mov [rdi], al
+    cmp al, 0
+    je .copy_s2
+    inc rsi
+    inc rdi
+    jmp .copy_s1"""
+
+                # Copier s_right à la suite
+                resultat = resultat + f"""\nmov rsi, [{pointeur_right}]
+.copy_s2:
+    mov al, byte [rsi]
+    mov [rdi], al
+    cmp al, 0
+    je .concat_done
+    inc rsi
+    inc rdi
+    jmp .copy_s2
+.concat_done:
+"""
+                # Terminer par 0
+                resultat = resultat + "mov byte [rdi], 0    ; assurer la terminaison"
+
+                # Retourner le pointeur du buffer résultant : mettre le résultat dans rax à la fin (le pointeur)
+                resultat = resultat + f"\nmov rax, rbx"
+                return resultat              
+
+        elif(e_left.data in  ['number', 'var'] and e_right.data in ['number', 'var']):
             return f"""{asm_left}
 push rax
 {asm_right}
@@ -175,6 +265,7 @@ movsd xmm1, xmm0
 movsd xmm0, [rsp]
 add rdp, 8
 {op2asm_double[e_op.value]}"""
+    # fin opbin
 
 
 def asm_commande(c):
@@ -197,9 +288,9 @@ def asm_commande(c):
     elif c.data =="skip": return "nop\n"
 
     elif c.data == "print": 
-        return f"""[{asm_expression(c.children[0])}]
-mov rdi, rax
-mov rsi, fmt
+        return f"""{asm_expression(c.children[0])}
+mov rdi, fmt
+mov rsi, rax
 xor rax, rax
 call printf
 """
@@ -233,19 +324,21 @@ def asm_programme(p):
     ret = asm_expression(p.children[3])
     prog_asm = prog_asm.replace("RETOUR", ret)
     init_vars = ""
+
     for i, c in enumerate(p.children[1].children):
         variables[c.children[1].value] = c.children[0].value
         init_vars += f"""mov rbx, [argv]
-
 mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
+    prog_asm = prog_asm.replace("INIT_VARS", init_vars)
+
+    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
+    
     decl_var = asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_var)
 
-    prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2]))
     return prog_asm
 
 
@@ -255,7 +348,10 @@ if __name__ == "__main__":
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
-        #print(res)
         print(pp_programme(ast))
+        print("")
+        print("fin pretty printer")
+        print("")
+        print(res)
     with open("sample.asm", "w") as result:
         result.write(res)
