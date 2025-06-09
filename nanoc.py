@@ -4,8 +4,9 @@ g = Lark("""
 IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9]*/
 OPBIN: /[+\\-*\\/>]/
 NUMBER: /[1-9][0-9]*/ |"0"
-TYPE: "long" | "int" | "char" | "void" | "short"
-declaration: (TYPE | struct_type) IDENTIFIER -> decl
+STRING: /"[^"]*"/
+TYPE: "long" | "int" | "char" | "void" | "short" | "string"
+declaration: (TYPE | struct_type) IDENTIFIER 
 DOUBLE : /[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?/ | /[0-9]+[eE][+-]?[0-9]+/
 CAST : "double" | "int"
 struct_type: IDENTIFIER
@@ -16,6 +17,9 @@ expression: IDENTIFIER ->var
          | expression OPBIN expression ->opbin
          | DOUBLE -> double
          | NUMBER ->number
+         | STRING ->string
+         | "len(" expression ")" -> len
+         | expression "[" expression "]" -> index
          | field_access ->field_access
 command: (command ";")+ ->sequence
          |"while" "(" expression ")" "{" command "}" ->while
@@ -94,20 +98,51 @@ def parse_struct_def(tree):
     size_map[struct_name] = size
 
 def pp_expression(e):
-    if e.data in ['var','number','double'] : return f"{e.children[0].value}"
-    if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"
-    if e.data != "parentheses":
+    if e.data in ['var','number','double', 'string'] : return f"{e.children[0].value}"
+    if e.data == 'len' :
+        child = e.children[0]
+        if child.data in ['string', 'var']: #gérer les var qui ne sont pas des string pour ne pas les accepter
+            return f"len ({pp_expression(child)})"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == 'index' : #Aloïs gérera que l'index soit attribué qu'à des int
+        e_left = e.children[0]
+        e_right = e.children[1]
+        if e_left.data in ['string', 'var'] and e_right.data in ['number', 'var'] :
+            return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+            return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
+        else :
+            raise Exception("pas le bon type")
+    if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"        
+    
 
 def pp_commande(c):
-    if c.data == "affectation":
+    if c.data == "decl" :
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) > 1:
+            exp = c.children[1]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value}"
+    elif c.data == "decl":
+        type = c.children[0].children[0]
+        var = c.children[0].children[1]
+        if len(c.children) >1:
+            exp = c.children[1]
+            return f"{type.value} {var.value} = {pp_expression(exp)}"
+        return f"{type.value} {var.value}"
+    elif c.data == "affectation":
         var = c.children[0]
         exp = c.children[1]
         return f"{var.value} = {pp_expression(exp)};"
-    if c.data == "casting" :
+    elif c.data == "casting" :
         var = c.children[0]
         cast = c.children[1]
         exp = c.children[2]
@@ -234,15 +269,18 @@ pop rax
 
 
 
-def asm_commande(c, lst = None):
+def asm_command(c, lst = None):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
+        if type.value == "void":
+            raise Exception("c'est pas un vrai type void")
         if not isinstance(type, Tree):
             variables[var.value] = type.value
         else :#c'est une struct
             variables[var.value] = type.children[0].value
             variables_bss[var.value] = type.children[0].value
+
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -271,7 +309,7 @@ call printf
         return f"""loop{idx}: {asm_expression(exp)}
 cmp rax, 0
 jz end{idx}
-{asm_commande(body)}
+{asm_command(body)}
 jmp loop{idx}
 end{idx}: nop"""
     elif c.data == "set_value":
@@ -290,7 +328,7 @@ mov [{var} + {offset}], rax"""
     elif c.data == "sequence":
         result = ""
         for command in c.children:
-            result += f"{asm_commande(command)}\n"
+            result += f"{asm_command(command)}\n"
         return result
     
 
@@ -348,7 +386,7 @@ mov [{c.children[1].value}], rax
     decl_vars += asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_commande(p.children[2], struct_asm))
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2], struct_asm))
     structure = ""
     for variable, type in variables_bss.items():
         total_size_bytes = 0
