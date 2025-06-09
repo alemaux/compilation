@@ -31,4 +31,6 @@ Notre implémentation permet aussi de donner un type de retour à la fonction ma
 ### String / char*
 
 ### Structs
+- Ce qui fonctionne : il est possible de définir une struct, de créer une instance de struct en donnant des valeurs aux champs, d'y accéder et de les modifier
+- Ce qui ne fonctionne pas : l'allocation dynamique avec new. 
 
