@@ -28,7 +28,8 @@ command: (command ";")+ ->sequence
          |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
          |"printf" "(" expression ")" ->print
          |"skip" ->skip
-struct_field : (TYPE IDENTIFIER ";")
+struct_field : (TYPE IDENTIFIER ";") -> base_type
+         |IDENTIFIER IDENTIFIER ";" -> struct_type
 struct:"typedef struct" "{" struct_field+ "}" IDENTIFIER ";"-> struct
 main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
 program: (struct)* main -> programme
@@ -215,6 +216,16 @@ movsd xmm1, xmm0
 movsd xmm0, [rsp]
 add rdp, 8
 {op2asm_double[e_op.value]}"""
+        elif e_left.data == "field_access" or e_right.data == "field_access":
+            code_left = asm_expression(e_left)
+            code_right = asm_expression(e_right)
+            return f"""{code_left}
+push rax
+{code_right}
+mov rbx, rax
+pop rax
+{op2asm_int[e_op.value]}"""
+
     elif e.data == "field_access":
         var = e.children[0].children[0].value  # exemple : p
         field = e.children[0].children[1].value  # exemple : A
