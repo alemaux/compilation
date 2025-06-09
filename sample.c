@@ -1,7 +1,4 @@
-void main(string h, string w, string concat) {
-    s = "hello";
-    w = "world";
-    concat = s + w;
+void main(long X, long Y) {
     while(X){
         X= X - 1;
         Y = Y + 1
