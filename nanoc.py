@@ -174,7 +174,7 @@ def pp_commande(c):
     elif c.data == "sequence":
         result = ""
         for command in c.children:
-            result += f"{pp_commande(command)};\n"
+            result += f"    {pp_commande(command)};\n"
         return result
     elif c.data == "set_value":
         left = c.children[0]
@@ -209,11 +209,10 @@ def pp_main(p):
     list_var = pp_list_var(p.children[1].children)
     commands = pp_commande(p.children[2])
     retour = pp_expression(p.children[3])
-    corps = f"""{commands}
-    return({retour})
+    corps = f"""{commands}    return({retour})
     """
     return f"""{type} main({list_var}) {{
-    {corps}}} """
+{corps}}} """
 
 def pp_struct(p):
     result = ""
