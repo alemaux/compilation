@@ -58,7 +58,10 @@ size_map = {
     'char': 1,
     'int': 8,  
     'long': 8,
-    'void': 0   
+    'void': 0,
+    'float': 8 ,
+    'double': 8,
+    'string':8
 }
 
 types_len = {
@@ -501,6 +504,7 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2])) 
     decl_vars += asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
