@@ -1,8 +1,7 @@
 #!/bin/bash
 
-#execute le python nanoc.py, compile le fichier passé en argument (simple.asm ou sample.asm) et en sort l'exécutable a.out
-#dcp il faut passer en argument le nom du fichier dans lequel le python écrit
-
+#compile le fichier .c passé en argument
+#Pour utliser, juste besoin de faire "./comp.sh ./sample.c" par exemple
 if [ -z "$1" ]; then
   echo "Veuillez fournir un fichier ASM en argument."
   exit 1
