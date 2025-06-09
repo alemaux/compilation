@@ -273,9 +273,9 @@ def asm_command(c, lst = None):
     if c.data == "declaration":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
-        if type.value == "void":
-            raise Exception("c'est pas un vrai type void")
         if not isinstance(type, Tree):
+            if type.value == "void":
+                raise Exception("c'est pas un vrai type void")
             variables[var.value] = type.value
         else :#c'est une struct
             variables[var.value] = type.children[0].value
