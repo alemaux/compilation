@@ -11,14 +11,14 @@ Le compilateur que nous avons élaboré pour ce cours est constitué par les fic
 
 >comp.sh
 
-L'utilisation du compilateur est rendue plus simple par l'exécutable `comp.sh`, qui prend en argument un fichier `*.c` et le compile. Un exécutable nommé `a.out` et un fichier assembleur x86 `sample.asm` seront créés.
+L'utilisation du compilateur est rendue plus simple par les exécutable `comp.sh`, qui prennent en argument un fichier `*.c` pour le compiler. Un exécutable nommé `a.out` et un fichier assembleur x86 `sample.asm` seront créés.
 
 _Exemple d'utilisation :_ 
-> \> ./comp.sh ./sample.c
+> \> ./comp_[branche].sh ./sample.c
 
 ___
 
-## Fonctionnalités du compilateur
+## Fonctionnalités des compilateurs
 
 Les fonctionnalités que nous devions implémenter sont : le typage, les nombres flottants, les strings/char* et les structs.
 
@@ -26,17 +26,26 @@ Les fonctionnalités que nous devions implémenter sont : le typage, les nombres
 Nous avons décidé, dans ce projet, de faire un typage statique. Pour ce fait, nous utiliseons un dictionnaire python qui stocke les variables ainsi que leurs types à la compilation. Ceci permet de vérifier les types lors des affectations, et empêche les doubles déclarations. <br>
 Les types que nous avons implémentés sont les `int`, les `short`, les `char` et les `long`, dont les tailles en mémoire correspondent à celles du langage c.
 Notre implémentation permet aussi de donner un type de retour à la fonction main, et de vérifier si le type fourni dans la clause `return` y correspond. <br>
-Un exemple de code implémentant les fonctionnalités de typage est fourni. Compilez le fichier `sample_typage.c` pour obtenir un exécutable. Ce dernier prend en argument deux entiers et renvoie la somme des deux, à laquelle il ajoute 10. Cet exemple illustre également la déclaration de variables : dans la section `.data` du fichier assembleur, on trouve une déclaration pour la variable A, et une pour la variable B.
+Un exemple de code implémentant les fonctionnalités de typage est fourni. Compilez le fichier `sample_typage.c` pour obtenir un exécutable. Ce dernier prend en argument deux entiers et renvoie la somme des deux, à laquelle il ajoute 10. Cet exemple illustre également la déclaration de variables : dans la section `.data` du fichier assembleur, on trouve une déclaration pour la variable A, et une pour la variable B.<br>
+Le typage est marche avec toutes les branches. Nous proposons d'utiliser :
+> \>./comp_double.sh sample_typage.c
 
 ### String / char*
 
 ### Structs
+
+Pour utiliser le compilateur de la branche _struct__, nous proposons l'exécutable `comp_struct.sh`, ainsi que le code d'exemple `sample_struct.c`. <br>
+Exemple d'utilisation : 
+> \> ./comp_struct.sh sample_struct.c
+
 - Ce qui fonctionne : il est possible de définir une struct, de créer une instance de struct en donnant des valeurs aux champs, d'y accéder et de les modifier
 - Ce qui ne fonctionne pas : l'allocation dynamique avec new. 
 
 ### Double
 
-Pour tester les doubles, il faut se rendre sur la branch `double`
+Pour utiliser le compilateur de la branche _double_, nous proposons l'exécutable `comp_double.sh`. <br>
+Exemple d'utilisation : 
+> \> ./comp_double.sh [fichier utlisant des doubles].c
 
 Lors de l'implémentation des doubles, nous avions plusieurs objectifs :
 > Manipuler les registres des doubles
