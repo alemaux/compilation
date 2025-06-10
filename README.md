@@ -39,7 +39,7 @@ Exemple d'utilisation :
 > \> ./comp_struct.sh sample_struct.c
 
 - Ce qui fonctionne : il est possible de définir une struct, de créer une instance de struct en donnant des valeurs aux champs, d'y accéder et de les modifier
-- Ce qui ne fonctionne pas : l'allocation dynamique avec new. 
+- Ce qui ne fonctionne pas : l'allocation dynamique avec new et l'appel à printf. 
 
 ### Double
 
