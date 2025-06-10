@@ -32,6 +32,25 @@ Le typage est marche avec toutes les branches. Nous proposons d'utiliser :
 
 ### String / char*
 
+Les fonctionnalités implémentées sont la déclaration, l'affectation, la concaténation, la méthode len(), la méthode index (string[index]), et le printf.
+Le code sample_string.c permet d'avoir un aperçu des capacités de notre compilateur.
+
+Pour utiliser le compilateur et obtenir un exécutable a.out :
+> \> ./comp_string.sh sample_string.c
+
+Puis, pour utiliser l'exécutable, ne pas oublier de mettre les arguments d'entrée du main, en l'occurence pour sample_string.c deux entiers puis deux chaînes de caractères. Par exemple :
+> \> ./a.out 2 4 "world" "test"
+
+Le type string est manipulé comme un pointeur qui pointe vers le premier caractère de la chaîne de caractère. Et les diverses fonctionnalités déroulent la chaîne de caractères avec le 0 final qui signifie la fin de la chaîne de caractère.
+
+A noter que pour faciliter l'implémentation du compilateur, le choix a été fait d'implémenter les fonctionnalités des string uniquement avec des variables (par exemple h) et pas directement les chaînes de caractères (par exemple "hello"). Pour pallier ce défaut, il suffit d'attribuer toutes les chaînes de caractères à des variables avant utilisation. Il n'est ainsi pas possible d'utiliser les commandes suivantes :
+len("hello");
+"hello"[1];
+s = "hello" + "world";
+s = h + "world";
+s = "hello" + w;
+
+
 ### Structs
 
 Pour utiliser le compilateur de la branche _struct__, nous proposons l'exécutable `comp_struct.sh`, ainsi que le code d'exemple `sample_struct.c`. <br>
