@@ -51,8 +51,7 @@ struct = {} #structures qui sont déclarées (pas possible d'instancier un point
 #pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
 struct_bss = {}
 allocated_vars = {}#pour les var avec malloc
-
-op2asm = {'+' : "add rax, rbx", '-' : "sub rax, rbx"}
+float_literals = {}
 
 size_map = {
     'char': 1,
@@ -72,6 +71,10 @@ types_len = {
 
 asm_decl_struct = ""
 
+
+op2asm_int = {'+': "add rax, rbx", "-": "sub rax, rbx"}
+op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le moment juste les sommes et soustraction mais faire le reste
+
 def parse_struct_def(tree):
     struct_name = tree.children[-1].value
     fields = []
@@ -81,35 +84,6 @@ def parse_struct_def(tree):
         size += size_map[tree.children[i].children[0].value]
     struct[struct_name] = fields
     size_map[struct_name] = size
-
-
-def get_type_expression(e):
-    if e.data == "number":
-        return "int" #Entier par défaut : int
-    if e.data == "double":
-        return "double" #Float par défaut : double
-    if e.data == "var":
-        var_name = e.children[0].value
-        if var_name in variables:
-            return variables[var_name] #Si la variable est déclarée
-        else:
-            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
-    if e.data == "opbin":
-        type1 = get_type_expression(e.children[0])
-        type2 = get_type_expression(e.children[2])
-        if(type1==type2):
-            return type1
-    if e.data == "field_access":
-        objet = e.children[0].children[0].value
-        type_objet = struct_bss[objet]
-        champ = e.children[0].children[1].value
-        for elem in struct[type_objet]:
-            if elem[1] == champ:
-                return elem[0] 
-        raise ValueError(f"Expression inattendue pour type : {e}")
-    else:
-        raise ValueError(f"Expression inattendue pour type : {e}")
-
 
 def pp_expression(e):
     if e.data in ['var','number','double', 'string'] : return f"{e.children[0].value}"
@@ -139,7 +113,6 @@ def pp_expression(e):
         else :
             raise Exception("pas le bon type")
     if e.data == "parentheses": return f"({pp_expression(e.children[0])}) {e.children[1].value} {pp_expression(e.children[2])}"        
-    
 
 def pp_commande(c):
     if c.data == "decl":
@@ -191,8 +164,6 @@ def pp_commande(c):
         champ = left.children[1]
         value = c.children[1]
         return f"{objet.value}.{champ.value} = {pp_expression(value)};"
-
-
     return ""
 
 def pp_list_var(lv):
@@ -201,12 +172,6 @@ def pp_list_var(lv):
         list_var += pp_declaration(v)
         list_var += ", "
     return list_var[:-2]
-
-
-def get_vars_expression(e):
-    pass 
-
-
 
 def pp_declaration(d):
     type = d.children[0]
@@ -237,27 +202,9 @@ def pp_programme(p):
     result += pp_main(p.children[-1])
     return result
     
-
-def get_vars_commande(c):
-    pass
-
-op2asm_int = {'+': "add rax, rbx", "-": "sub rax, rbx"}
-op2asm_double = {'+' : "addsd xmm0, xmm1", "-": "subsd xmm0, xmm1"} #pour le moment juste les sommes et soustraction mais faire le reste
-
-cpt = iter(range(1000000))
-variables = {}
-float_literals = {}
-types_len = {
-        "char" : "db",
-        "short" : "dw",
-        "int" : "dd",
-        "long" : "dq",
-        "double" : "dq"
-    }
-
 def get_type_expression(e):
     if e.data == "number":
-        return "int"
+        return "number"
     if e.data == "double":
         return "double"
     if e.data == "var":
@@ -272,12 +219,18 @@ def get_type_expression(e):
 
         if type1 == type2:
             return type1
+        
+        if type1 == "number":
+            return type2
+        elif type2 == "number":
+            return type1
 
         # Si le cast int → double est possible (même si c'est une constante ou une var)
-        if type1 == "double" and type2 == "int":
+        if type1 == "double" and (type2 == "int" or type2 == "number"):
             return "cast"
 
         raise ValueError(f"Types incompatibles pour opération binaire : {type1} et {type2}")
+    
     if e.data == "field_access":
         #le type est celui du champ de la struct
         objet = e.children[0].children[0].value
@@ -286,8 +239,7 @@ def get_type_expression(e):
         for values in struct[struct_name]:
             if values[1] == field:
                 return values[0]
-
-
+            
     raise ValueError(f"Expression inattendue pour type : {e}")
 
 def get_label(val):
@@ -310,6 +262,7 @@ def asm_expression(e):
         label = get_label(val)
         return f"movsd xmm0, [{label}]"
 
+
     if e.data == "opbin":
         e_left = e.children[0]
         e_op = e.children[1]
@@ -318,6 +271,8 @@ def asm_expression(e):
         asm_right = asm_expression(e_right)
         type_exp = get_type_expression(e)
 
+
+        ###BOUCLE IF DU CAST /!\ C'EST LONG
         if(type_exp == "cast"):
             if(e_left.data == "var"):
                 if e_right.data == "var":
@@ -358,9 +313,11 @@ movsd xmm0, [rsp]
 add rsp, 8
 {op2asm_double[e_op.value]}
 """
+        ###FIN BOUCLE IF DU CAST
 
-        if(type_exp == "double"):
-                        return f"""{asm_left}
+        
+        elif(type_exp == "double"):
+            return f"""{asm_left}
 sub rsp, 8
 movsd [rsp], xmm0\n
 {asm_right}
@@ -369,13 +326,14 @@ movsd xmm0, [rsp]
 add rsp, 8
 {op2asm_double[e_op.value]}"""
 
-        elif(type_exp == "int"):
-                        return f"""{asm_left}
+        elif (type_exp in ("int", "char", "short", "long", "number")) :
+            return f"""{asm_left}
 push rax
 {asm_right}
 mov rbx, rax
 pop rax
 {op2asm_int[e_op.value]}"""
+        
         elif(e_left.data == 'double' or e_right.data == 'double'):
             return f"""{asm_left}
 sub rsp, 8
@@ -385,6 +343,7 @@ movsd xmm1, xmm0
 movsd xmm0, [rsp]
 add rdp, 8
 {op2asm_double[e_op.value]}"""
+        
         elif e_left.data == "field_access" or e_right.data == "field_access":
             code_left = asm_expression(e_left)
             code_right = asm_expression(e_right)
@@ -394,6 +353,9 @@ push rax
 mov rbx, rax
 pop rax
 {op2asm_int[e_op.value]}"""
+###FIN BOUCLE IF DE TRAITEMENT DES OPBIN
+
+
     elif e.data == "field_access":
         var = e.children[0].children[0].value  # exemple : p
         field = e.children[0].children[1].value  # exemple : A
@@ -434,7 +396,7 @@ movsd [{var.value}], xmm0
             return f"""{asm_exp}
 movsd [{var.value}], xmm0 \n"""
         
-        elif type_var == "int":
+        else:
             return f"""{asm_exp}
 mov [{var.value}], rax\n"""
         
@@ -605,7 +567,11 @@ def asm_programme(p):
     return res
 
 if __name__ == "__main__":
-    with open("sample_struct.c") as f:
+    try : 
+        filename = sys.argv[1]
+    except : 
+        filename = "sample_typage.c"
+    with open(filename) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
