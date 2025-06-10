@@ -1,6 +1,8 @@
 string main(long X, long Y, string w, string concat) {
     int A = 13;
     string h = "hello";
+    int l = len(h);
+    printf(l);
     printf(45);
     printf(h);
     w = "world";

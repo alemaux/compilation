@@ -273,17 +273,17 @@ mov rbx, rax"""
 
     if e.data == 'len' :
         child = e.children[0] #on prend en compte que des var
-        if child.data == 'var' and variables[child.children[0].value]== "string":
-            pointeur = child.children[0]
+        if child.data == 'var' and variables[child.children[0].value] == "string":
+            pointeur = child.children[0].value
             resultat = f"""mov rdi, [{pointeur}]
 xor rcx, rcx       ; compteur longueur
-.len1_loop:
+.len_loop:
     cmp byte [rdi], 0
-    je .len1_done
+    je .len_done
     inc rcx
     inc rdi
-    jmp .len1_loop
-.len1_done:
+    jmp .len_loop
+.len_done:
     mov rax, rcx"""
             return resultat
         #elif child.data == 'string':
