@@ -41,6 +41,8 @@ program: (struct)* main -> programme
 %ignore WS
 """, start='program')
 
+boucles = []
+
 cpt = iter(range(1000000))
 
 types = ["long", "int", "char", "void", "short", "string"]
@@ -275,16 +277,21 @@ mov rbx, rax"""
         child = e.children[0] #on prend en compte que des var
         if child.data == 'var' and variables[child.children[0].value] == "string":
             pointeur = child.children[0].value
+            len_boucles = len(boucles)
+            id = str(len_boucles)
+            boucles.append(id)
             resultat = f"""mov rdi, [{pointeur}]
 xor rcx, rcx       ; compteur longueur
-.len_loop:
+.len_loop{id}:
     cmp byte [rdi], 0
-    je .len_done
+    je .len_done{id}
     inc rcx
     inc rdi
-    jmp .len_loop
-.len_done:
-    mov rax, rcx"""
+    jmp .len_loop{id}
+.len_done{id}:
+    mov rax, rcx
+    dec rax
+    dec rax"""
             return resultat
         #elif child.data == 'string':
         else :
@@ -311,28 +318,30 @@ xor rcx, rcx       ; compteur longueur
                 print("\n\n\n\n\n")
                 s_left = ""
                 s_right = ""
-
+                len_boucles = len(boucles)
+                id = str(len_boucles)
+                boucles.append(id)
                 # Calculer la longueur de chaque chaîne (s_left et s_right)
                 resultat = resultat + f"""mov rdi, [{pointeur_left}]       ; copie pour ne pas perdre rsi
 xor rcx, rcx       ; compteur longueur s_left
-.len1_loop:
+.len1_loop{id}:
     cmp byte [rdi], 0
-    je .len1_done
+    je .len1_done{id}
     inc rcx
     inc rdi
-    jmp .len1_loop
-.len1_done:
+    jmp .len1_loop{id}
+.len1_done{id}:
     mov r8, rcx        ; r8 = len1"""
                 
                 resultat = resultat + f"""\nmov rdi, [{pointeur_right}]
 xor rcx, rcx
-.len2_loop:
+.len2_loop{id}:
     cmp byte [rdi], 0
-    je .len2_done
+    je .len2_done{id}
     inc rcx
     inc rdi
-    jmp .len2_loop
-.len2_done:
+    jmp .len2_loop{id}
+.len2_done{id}:
     mov r9, rcx        ; r9 = len2"""
 
                 # Allouer malloc(len1 + len2 + 1)
@@ -347,27 +356,29 @@ mov rbx, rax       ; rbx = pointeur du buffer alloué"""
                 # Copier s_left dans le buffer
                 resultat = resultat + f"""\nmov rsi, [{pointeur_left}]
 mov rdi, rbx           ; pointeur de destination = buffer
-.copy_s1:
+.copy_s1{id}:
     mov al, byte [rsi]
     cmp al, 0
-    je .copy_s1_done
+    je .copy_s1_done{id}
     mov [rdi], al
     inc rsi
     inc rdi
-    jmp .copy_s1"""
+    jmp .copy_s1{id}"""
 
                 # Copier s_right à la suite
-                resultat = resultat + f"""\n.copy_s1_done:
+                resultat = resultat + f"""\n.copy_s1_done{id}:
+dec rdi
 mov rsi, [{pointeur_right}]
-.copy_s2:
+inc rsi
+.copy_s2{id}:
     mov al, byte [rsi]
     cmp al, 0
-    je .concat_done
+    je .concat_done{id}
     mov [rdi], al
     inc rsi
     inc rdi
-    jmp .copy_s2
-.concat_done:
+    jmp .copy_s2{id}
+.concat_done{id}:
 """
                 # Terminer par 0
                 resultat = resultat + "mov byte [rdi], 0    ; assurer la terminaison"
