@@ -25,7 +25,8 @@ Les fonctionnalités que nous devions implémenter sont : le typage, les nombres
 ### Typage
 Nous avons décidé, dans ce projet, de faire un typage statique. Pour ce fait, nous utiliseons un dictionnaire python qui stocke les variables ainsi que leurs types à la compilation. Ceci permet de vérifier les types lors des affectations, et empêche les doubles déclarations. <br>
 Les types que nous avons implémentés sont les `int`, les `short`, les `char` et les `long`, dont les tailles en mémoire correspondent à celles du langage c.
-Notre implémentation permet aussi de donner un type de retour à la fonction main, et de vérifier si le type fourni dans la clause `return` y correspond. 
+Notre implémentation permet aussi de donner un type de retour à la fonction main, et de vérifier si le type fourni dans la clause `return` y correspond. <br>
+Un exemple de code implémentant les fonctionnalités de typage est fourni. Compilez le fichier `sample_typage.c` pour obtenir un exécutable. Ce dernier prend en argument deux entiers et renvoie la somme des deux, à laquelle il ajoute 10. Cet exemple illustre également la déclaration de variables : dans la section `.data` du fichier assembleur, on trouve une déclaration pour la variable A, et une pour la variable B.
 
 ### String / char*
 
