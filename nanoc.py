@@ -378,7 +378,7 @@ def get_struct_offset(struct_name, field_name):
     for field_type, field in struct[struct_name]:
         if field == field_name:
             return offset
-        offset += 8  #on suppose 8 octets d'alignement
+        offset += size_map[field_type]
     raise Exception(f"Champ {field_name} non trouvé dans struct {struct_name}")
 
 
@@ -426,7 +426,7 @@ def asm_programme(p):
     return res
 
 if __name__ == "__main__":
-    with open(sys.argv[0]) as f:
+    with open(sys.argv[1]) as f:
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
