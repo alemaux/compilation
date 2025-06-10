@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #compile le fichier .c passé en argument
-#Pour utliser, juste besoin de faire "./comp.sh ./sample.c" par exemple
+#Pour utliser, juste besoin de faire "./comp_string.sh ./sample_string.c" par exemple
 
 
 echo "COMPILATION - VERSION STRING"

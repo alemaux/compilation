@@ -6,6 +6,7 @@ section .data
 DECL_VARS
 argv : dq 0
 fmt_int: db "%d", 10, 0
+fmt_string: db "%s", 10, 0
 
 section .bss
 DECL_STRUCT

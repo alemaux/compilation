@@ -15,7 +15,7 @@ field_access: IDENTIFIER "." IDENTIFIER ("." IDENTIFIER)*
 liste_var: ->vide
          |declaration ("," declaration)* ->vars
 expression: IDENTIFIER ->var
-         | expression OPBIN expression ->opbin
+         | expression OPBIN expression -> opbin
          | DOUBLE -> double
          | NUMBER ->number
          | STRING ->string
@@ -23,32 +23,34 @@ expression: IDENTIFIER ->var
          | expression "[" expression "]" -> index
          | field_access ->field_access
 command: (command ";")+ ->sequence
-         |"while" "(" expression ")" "{" command "}" ->while
+         |"while" "(" expression ")" "{" command "}" -> while
          |declaration ("=" expression)? -> declaration
          |IDENTIFIER "=" expression -> affectation
          |declaration "=" "new" struct_type "("expression ("," expression)* ")" -> malloc
          |IDENTIFIER "=""("CAST")" expression -> casting
          |field_access "=" expression -> set_value
-         |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? ->ite
-         |"printf" "(" expression ")" ->print
+         |"if" "(" expression ")" "{" command "}" ("else" "{" command "}")? -> ite
+         |"printf" "(" expression ")" -> print
          |"skip" ->skip
 struct_field : (TYPE IDENTIFIER ";") -> base_type
          |IDENTIFIER IDENTIFIER ";" -> struct_type
 struct:"typedef struct" "{" struct_field+ "}" IDENTIFIER ";"-> struct
-main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" ->main
+main: TYPE "main" "(" liste_var ")" "{" command "return" "(" expression")" "}" -> main
 program: (struct)* main -> programme
 %import  common.WS
 %ignore WS
 """, start='program')
 
+boucles = []
+
 cpt = iter(range(1000000))
 
-types = ["long", "int", "char", "void", "short"]
+types = ["long", "int", "char", "void", "short", "string"]
 
 variables = {}
 struct = {} #structures qui sont déclarées (pas possible d'instancier un point pax exemple si la structure n'a pas été définie)
 #contient les structures sous la forme struct[nom] = [(type1, champ1), ...]
-variables_bss = {}#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
+#pour les variables qui sont déclarées mais non initialisées (ex : Point P;)
 struct_bss = {}
 allocated_vars = {}#pour les var avec malloc
 
@@ -58,7 +60,11 @@ size_map = {
     'char': 1,
     'int': 8,  
     'long': 8,
-    'void': 0   
+    'void': 0,
+    'float': 8 ,
+    'double': 8,
+    'string':8,
+    'len':8
 }
 
 types_len = {
@@ -66,49 +72,18 @@ types_len = {
         "short" : "dw",
         "int" : "dd",
         "long" : "dq",
-        "string" : "dq"
+        "string" : "dq", # pointeur
+        "len" : "dq"
     }
 
+format = {
+    "number" : "fmt_int",
+    "int" : "fmt_int",
+    "string" : "fmt_string",
+    "len" : "fmt_int"
+}
+
 asm_decl_struct = ""
-
-def parse_struct_def(tree):
-    struct_name = tree.children[-1].value
-    fields = []
-    size = 0
-    for i in range(len(tree.children) - 1):#on exclut le nom de la struct
-        fields.append((tree.children[i].children[0].value, tree.children[i].children[1].value))
-        size += size_map[tree.children[i].children[0].value]
-    struct[struct_name] = fields
-    size_map[struct_name] = size
-
-
-def get_type_expression(e):
-    if e.data == "number":
-        return "int" #Entier par défaut : int
-    if e.data == "double":
-        return "double" #Float par défaut : double
-    if e.data == "var":
-        var_name = e.children[0].value
-        if var_name in variables:
-            return variables[var_name] #Si la variable est déclarée
-        else:
-            raise ValueError(f"Variable {var_name} utilisée mais pas initialisée")
-    if e.data == "opbin":
-        type1 = get_type_expression(e.children[0])
-        type2 = get_type_expression(e.children[2])
-        if(type1==type2):
-            return type1
-    if e.data == "field_access":
-        objet = e.children[0].children[0].value
-        type_objet = struct_bss[objet]
-        champ = e.children[0].children[1].value
-        for elem in struct[type_objet]:
-            if elem[1] == champ:
-                return elem[0] 
-        raise ValueError(f"Expression inattendue pour type : {e}")
-    else:
-        raise ValueError(f"Expression inattendue pour type : {e}")
-
 
 asm_decl_struct = ""
 
@@ -159,18 +134,22 @@ def pp_expression(e):
             return f"len ({pp_expression(child)})"
         else :
             raise Exception("pas le bon type")
-    if e.data == 'index' : #Aloïs gérera que l'index soit attribué qu'à des int
+    if e.data == 'index' : #on gérera que l'index soit attribué qu'à des int
         e_left = e.children[0]
         e_right = e.children[1]
         if e_left.data in ['string', 'var'] and e_right.data in ['number', 'var'] :
             return f"{pp_expression(e_left)}[{pp_expression(e_right)}]"
         else :
             raise Exception("pas le bon type")
+    if e.data == "field_access":
+        objet = e.children[0].children[0].value
+        field = e.children[0].children[1].value
+        return f"{objet}.{field}"
     if e.data == 'opbin' :
         e_left = e.children[0]
         e_op = e.children[1]
         e_right = e.children[2]
-        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index'] :
+        if e_left.data in ['var','number','double', 'string', 'opbin', 'len', 'index', "field_access"] :
             return f"{pp_expression(e_left)} {e_op.value} {pp_expression(e_right)}"
         else :
             raise Exception("pas le bon type")
@@ -178,15 +157,15 @@ def pp_expression(e):
     
 
 def pp_commande(c):
-    if c.data == "decl" :
+    if c.data == "decl":
         type = c.children[0].children[0]
         var = c.children[0].children[1]
         if len(c.children) > 1:
             exp = c.children[1]
             return f"{type.value} {var.value} = {pp_expression(exp)}"
         return f"{type.value} {var.value}"
-    elif c.data == "decl":
-        type = c.children[0].children[0]
+    elif c.data == "declaration":
+        type = c.children[0].children[0]#.children[0]
         var = c.children[0].children[1]
         if len(c.children) >1:
             exp = c.children[1]
@@ -210,7 +189,7 @@ def pp_commande(c):
     elif c.data == "sequence":
         result = ""
         for command in c.children:
-            result += f"{pp_commande(command)};\n"
+            result += f"    {pp_commande(command)};\n"
         return result
     elif c.data == "set_value":
         left = c.children[0]
@@ -245,17 +224,16 @@ def pp_main(p):
     list_var = pp_list_var(p.children[1].children)
     commands = pp_commande(p.children[2])
     retour = pp_expression(p.children[3])
-    corps = f"""{commands}
-    return({retour})
+    corps = f"""{commands}    return({retour})
     """
     return f"""{type} main({list_var}) {{
-    {corps}}} """
+{corps}}} """
 
 def pp_struct(p):
     result = ""
     for i in range(len(p.children)-1):
         result += f"{pp_declaration(p.children[i])};\n"
-    return f"typedef struct {{{result}}}{p.children[-1]}\n"
+    return f"typedef struct {{{result}}}{p.children[-1]};\n\n"
 
 def pp_programme(p):
     result = ""
@@ -276,7 +254,7 @@ cpt = iter(range(1000000))
 
 def asm_expression(e):
     if e.data == 'var' : 
-        return f"mov rax, [{e.children[0].value}]"
+        return f"mov rax, [{e.children[0].value}]"  #[h] : on rprend le contenu du pointeur h 
     if e.data == 'number' : 
         return f"mov rax, {e.children[0].value}"
     if e.data == 'double' : 
@@ -295,6 +273,58 @@ mov rbx, rax"""
         resultat = resultat + f"\nmov byte [rbx + {l}], 0"
         return resultat
 
+    if e.data == 'len' :
+        child = e.children[0] #on prend en compte que des var
+        if child.data == 'var' and variables[child.children[0].value] == "string":
+            pointeur = child.children[0].value
+            len_boucles = len(boucles)
+            id = str(len_boucles)
+            boucles.append(id)
+            resultat = f"""mov rdi, [{pointeur}]
+xor rcx, rcx       ; compteur longueur
+.len_loop{id}:
+    cmp byte [rdi], 0
+    je .len_done{id}
+    inc rcx
+    inc rdi
+    jmp .len_loop{id}
+.len_done{id}:
+    mov rax, rcx
+    dec rax
+    dec rax"""
+            return resultat
+        #elif child.data == 'string':
+        else :
+            raise Exception("pas le bon type")
+    
+    if e.data == 'index' : #on gérera que l'index soit attribué qu'à des int
+        e_left = e.children[0]
+        e_right = e.children[1]
+        if e_left.data == 'var' and variables[e_left.children[0].value] == "string" and e_right.data in ['number','int']: #in ['number', 'var'] :
+            pointeur = e_left.children[0].value
+            indice = e_right.children[0].value
+            len_boucles = len(boucles)
+            id = str(len_boucles)
+            boucles.append(id)
+            resultat = f"""mov rdi, [{pointeur}]
+inc rdi   ; on saute le guillemet
+xor rcx, rcx       ; compteur longueur
+.index_loop{id}:
+    cmp rcx, {indice}
+    je .index_done{id}
+    inc rcx
+    inc rdi
+    jmp .index_loop{id}
+.index_done{id}:
+    movzx rax, byte [rdi]   ; charger l'octet, et l'étendre en entier (valeur ASCII)
+    ;mov rax, rdi
+    """
+            # convertir en int :
+            # resultat = resultat + f"""\n"""
+            return resultat
+        else :
+            raise Exception("pas le bon type")
+        
     # début opbin
     if e.data == "opbin":
         e_left = e.children[0]
@@ -305,70 +335,75 @@ mov rbx, rax"""
 
         # le premier cas de figure traitera des var pour ne plus avoir à s'embêter avec après en fonction du typage
         if(e_left.data == 'var' and e_right.data == 'var'):
-            type_left = variables[e_left.value]
-            type_right = variables[e_right.value]
+            pointeur_left = e_left.children[0].value
+            pointeur_right = e_right.children[0].value
+            type_left = variables[pointeur_left]
+            type_right = variables[pointeur_right]
+            # variables_bss[var.value] = type.value
             if(type_left == 'string' and type_right == 'string' and e_op.value == '+'):
                 resultat = ""
-                pointeur_left = e_left.value
-                pointeur_right = e_right.value
-                s_left = ""
-                s_right = ""
-
+                len_boucles = len(boucles)
+                id = str(len_boucles)
+                boucles.append(id)
                 # Calculer la longueur de chaque chaîne (s_left et s_right)
-                resultat = resultat + f"""mov rdi, [{pointeur_left}]       ; copie pour ne pas perdre rsi
-xor rcx, rcx       ; compteur longueur s_left
-.len1_loop:
+                resultat = resultat + f"""; Début concaténation
+mov rdi, [{pointeur_left}] ; copie pour ne pas perdre rsi
+xor rcx, rcx
+.len1_loop{id}:
     cmp byte [rdi], 0
-    je .len1_done
+    je .len1_done{id}
     inc rcx
     inc rdi
-    jmp .len1_loop
-.len1_done:
-    mov r8, rcx        ; r8 = len1"""
+    jmp .len1_loop{id}
+.len1_done{id}:
+    mov r8, rcx ; r8 = len1"""
                 
                 resultat = resultat + f"""\nmov rdi, [{pointeur_right}]
 xor rcx, rcx
-.len2_loop:
+.len2_loop{id}:
     cmp byte [rdi], 0
-    je .len2_done
+    je .len2_done{id}
     inc rcx
     inc rdi
-    jmp .len2_loop
-.len2_done:
-    mov r9, rcx        ; r9 = len2"""
+    jmp .len2_loop{id}
+.len2_done{id}:
+    mov r9, rcx ; r9 = len2"""
 
                 # Allouer malloc(len1 + len2 + 1)
                 # r8 = len1, r9 = len2
                 resultat = resultat + f"""\nmov rax, r8
 add rax, r9
-add rax, 1         ; pour le '\0'
-mov rdi, rax       ; rdi = taille
-call malloc        ; retourne pointeur dans rax
-mov rbx, rax       ; rbx = pointeur du buffer alloué"""
+add rax, 1 ; pour le 'backslash 0'
+mov rdi, rax ; rdi = taille
+call malloc ; retourne pointeur dans rax
+mov rbx, rax ; rbx = pointeur du buffer alloué"""
 
-                # Copier s_left dans le buffer
+                # Copier string_left dans le buffer
                 resultat = resultat + f"""\nmov rsi, [{pointeur_left}]
-mov rdi, rbx           ; pointeur de destination = buffer
-.copy_s1:
+mov rdi, rbx ; pointeur de destination = buffer
+.copy_s1{id}:
     mov al, byte [rsi]
-    mov [rdi], al
     cmp al, 0
-    je .copy_s2
+    je .copy_s1_done{id}
+    mov [rdi], al
     inc rsi
     inc rdi
-    jmp .copy_s1"""
+    jmp .copy_s1{id}"""
 
-                # Copier s_right à la suite
-                resultat = resultat + f"""\nmov rsi, [{pointeur_right}]
-.copy_s2:
+                # Copier string_right à la suite
+                resultat = resultat + f"""\n.copy_s1_done{id}:
+dec rdi
+mov rsi, [{pointeur_right}]
+inc rsi
+.copy_s2{id}:
     mov al, byte [rsi]
-    mov [rdi], al
     cmp al, 0
-    je .concat_done
+    je .concat_done{id}
+    mov [rdi], al
     inc rsi
     inc rdi
-    jmp .copy_s2
-.concat_done:
+    jmp .copy_s2{id}
+.concat_done{id}:
 """
                 # Terminer par 0
                 resultat = resultat + "mov byte [rdi], 0    ; assurer la terminaison"
@@ -402,15 +437,13 @@ push rax
 mov rbx, rax
 pop rax
 {op2asm_int[e_op.value]}"""
-
     elif e.data == "field_access":
         var = e.children[0].children[0].value  # exemple : p
         field = e.children[0].children[1].value  # exemple : A
-        struct_type = variables[var]  # exemple : "Point"
+        struct_type = struct_bss[var]  # exemple : "Point"
         offset = get_struct_offset(struct_type, field)
         return f"mov rax, [{var} + {offset}]"
 # fin opbin
-
 
 
 def asm_command(c, lst = None):
@@ -421,11 +454,10 @@ def asm_command(c, lst = None):
             if type.value == "void":
                 raise Exception("c'est pas un vrai type void")
             variables[var.value] = type.value
-            variables_bss[var.value] = type.value
+            #variables_bss[var.value] = type.value
         else :#c'est une struct
-            variables[var.value] = type.children[0].value
+            #variables[var.value] = type.children[0].value
             struct_bss[var.value] = type.children[0].value
-
         if len(c.children) >=2:
             exp = c.children[1]
             return f"{asm_expression(exp)}\nmov [{var.value}], rax"
@@ -440,9 +472,13 @@ def asm_command(c, lst = None):
         
     elif c.data =="skip": return "nop\n"
 
-    elif c.data == "print": 
+    elif c.data == "print":
+        if(c.children[0].children[0].value in variables):
+            fmt = format[variables[c.children[0].children[0]]]
+        else :
+            fmt = format[c.children[0].data]
         return f"""{asm_expression(c.children[0])}
-mov rdi, fmt
+mov rdi, {fmt}
 mov rsi, rax
 xor rax, rax
 call printf
@@ -461,11 +497,10 @@ end{idx}: nop"""
         var = c.children[0].children[0].value 
         field = c.children[0].children[1].value  
         exp = c.children[1]
-        struct_type = variables[var]
+        struct_type = struct_bss[var]
         offset = get_struct_offset(struct_type, field)
         return f"""{asm_expression(exp)}
 mov [{var} + {offset}], rax"""
-    
     elif c.data == "malloc":
         var = c.children[0].children[1].value
         var_type = c.children[0].children[0].value
@@ -527,20 +562,16 @@ mov rdi, [rbx + {8 * (i+1)}]
 call atoi
 mov [{c.children[1].value}], rax
 """
-
+    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2])) 
     decl_vars += asm_decl_var(p.children[1].children)
     prog_asm = prog_asm.replace("DECL_VARS", decl_vars)
     prog_asm = prog_asm.replace("INIT_VARS", init_vars)
-    prog_asm = prog_asm.replace("COMMANDE", asm_command(p.children[2]))
+    
     structure = ""
     for variable, type in struct_bss.items():
         total_size_bytes = 0
         for field in struct[type]:
             total_size_bytes += size_map[field[0]]
-        size_qword = (total_size_bytes + 7) // 8
-        structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
-    for variable, type in variables_bss.items():
-        total_size_bytes = size_map[type]
         size_qword = (total_size_bytes + 7) // 8
         structure += f"{variable}: resq {size_qword} ; taille {total_size_bytes} pour {variable}\n"
     prog_asm = prog_asm.replace("DECL_STRUCT", structure)
@@ -551,7 +582,8 @@ mov [{c.children[1].value}], rax
     if((given_type != decl_type) and (decl_type != "void")):
         raise Exception(f"Pas le bon type de retour : déclaré {p.children[0].value}, donné {get_type_expression(p.children[3])}")
     ret = asm_expression(p.children[3])
-    prog_asm = prog_asm.replace("RETOUR", ret)
+    ret = ret + f"\nmov rdi, {format[p.children[0].value]}\n"
+    prog_asm = prog_asm.replace("RETOUR\nmov rdi, fmt_int", ret) # on s'adapte au moule en supprimant le fmt_int pour pouvoir print des string notamment
     return prog_asm
 
 def asm_programme(p):
@@ -560,16 +592,15 @@ def asm_programme(p):
             parse_struct_def(p.children[i])
     res = asm_main(p.children[-1])
     return res
-    
+
 if __name__ == "__main__":
-    with open(sys.argv[1]) as f:
+    with open(sys.argv[1]) as f: #"sample.c"
         src = f.read()
         ast = g.parse(src)
         res = asm_programme(ast)
         print(res)
         print(struct)
         print(ast)
-        ##print(pp_programme(ast))
-    with open("simple.asm", "w") as result:
+        print(pp_programme(ast))
+    with open("sample.asm", "w") as result:
         result.write(res)
-
