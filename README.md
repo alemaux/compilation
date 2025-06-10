@@ -50,6 +50,8 @@ s = "hello" + "world";
 s = h + "world";
 s = "hello" + w;
 
+En bonus, le pretty printer est implémenté et sera affiché en compilant le fichier sample_string.c avec nanoc_string.py
+
 
 ### Structs
 
