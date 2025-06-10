@@ -1,5 +1,4 @@
-string main(long X, long Y, string w, string concat, string test) {
-    int A = 13;
+string main(long X, long Y, string w, string concat) {
     string h = "hello";
     int l = len(h);
     printf(l);
@@ -11,10 +10,11 @@ string main(long X, long Y, string w, string concat, string test) {
     printf(length);
     concat = h + w;
     printf(concat);
-    test = concat + h;
+    string test = concat + h;
     printf(test);
     int ind = h[1];
     printf(ind);
+    printf("endirect");
     while(X){
         X= X - 1;
         Y = Y + 1;

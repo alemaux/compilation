@@ -274,7 +274,7 @@ mov rbx, rax"""
         return resultat
 
     if e.data == 'len' :
-        child = e.children[0] #on prend en compte que des var
+        child = e.children[0]
         if child.data == 'var' and variables[child.children[0].value] == "string":
             pointeur = child.children[0].value
             len_boucles = len(boucles)
