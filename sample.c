@@ -13,6 +13,8 @@ string main(long X, long Y, string w, string concat, string test) {
     printf(concat);
     test = concat + h;
     printf(test);
+    int ind = h[1];
+    printf(ind);
     while(X){
         X= X - 1;
         Y = Y + 1;

@@ -134,7 +134,7 @@ def pp_expression(e):
             return f"len ({pp_expression(child)})"
         else :
             raise Exception("pas le bon type")
-    if e.data == 'index' : #Aloïs gérera que l'index soit attribué qu'à des int
+    if e.data == 'index' : #on gérera que l'index soit attribué qu'à des int
         e_left = e.children[0]
         e_right = e.children[1]
         if e_left.data in ['string', 'var'] and e_right.data in ['number', 'var'] :
@@ -294,6 +294,34 @@ xor rcx, rcx       ; compteur longueur
     dec rax"""
             return resultat
         #elif child.data == 'string':
+        else :
+            raise Exception("pas le bon type")
+    
+    if e.data == 'index' : #on gérera que l'index soit attribué qu'à des int
+        e_left = e.children[0]
+        e_right = e.children[1]
+        if e_left.data == 'var' and variables[e_left.children[0].value] == "string" and e_right.data in ['number','int']: #in ['number', 'var'] :
+            pointeur = e_left.children[0].value
+            indice = e_right.children[0].value
+            len_boucles = len(boucles)
+            id = str(len_boucles)
+            boucles.append(id)
+            resultat = f"""mov rdi, [{pointeur}]
+inc rdi   ; on saute le guillemet
+xor rcx, rcx       ; compteur longueur
+.index_loop{id}:
+    cmp rcx, {indice}
+    je .index_done{id}
+    inc rcx
+    inc rdi
+    jmp .index_loop{id}
+.index_done{id}:
+    movzx rax, byte [rdi]   ; charger l'octet, et l'étendre en entier (valeur ASCII)
+    ;mov rax, rdi
+    """
+            # convertir en int :
+            # resultat = resultat + f"""\n"""
+            return resultat
         else :
             raise Exception("pas le bon type")
         
